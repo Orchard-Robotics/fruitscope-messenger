@@ -1,0 +1,22 @@
+# Local Postgres for development (mirrors Cloud SQL in production).
+# `npm run dev` brings this up automatically (npm run db:up / db:down to manage).
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: verdant-postgres
+    environment:
+      POSTGRES_USER: verdant
+      POSTGRES_PASSWORD: verdant
+      POSTGRES_DB: verdant
+    ports:
+      - "5432:5432"
+    volumes:
+      - verdant-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U verdant -d verdant"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  verdant-pgdata:

@@ -9,12 +9,15 @@
     "client"
   ],
   "scripts": {
+    "predev": "docker compose up -d --wait db",
     "dev": "concurrently -k -n server,client -c green,cyan \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "npm --workspace server run dev",
     "dev:client": "npm --workspace client run dev",
     "build": "npm --workspace client run build",
     "start": "npm --workspace server run start",
-    "typecheck": "npm --workspace server run typecheck && npm --workspace client run typecheck"
+    "typecheck": "npm --workspace server run typecheck && npm --workspace client run typecheck",
+    "db:up": "docker compose up -d --wait db",
+    "db:down": "docker compose down"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

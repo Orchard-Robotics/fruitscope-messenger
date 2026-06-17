@@ -1,15 +1,15 @@
 // Verdant chat schema.
 //
-// Local development runs on SQLite. For production swap the datasource
-// `provider` to "postgresql" (e.g. GCP Cloud SQL) and point DATABASE_URL at
-// it — the models below are provider-agnostic.
+// PostgreSQL everywhere: a local Docker Postgres for development
+// (see docker-compose.yml) and GCP Cloud SQL in production. DATABASE_URL
+// selects the target; migrations live in prisma/migrations.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

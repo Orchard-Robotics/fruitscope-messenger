@@ -1,0 +1,25 @@
+# Dependencies & build output are reinstalled/rebuilt inside the image
+node_modules
+**/node_modules
+dist
+client/dist
+**/*.tsbuildinfo
+
+# VCS & local tooling
+.git
+.github
+.gitignore
+terraform
+**/.terraform
+*.tfstate*
+
+# Secrets & local data (DATABASE_URL is injected at runtime)
+.env
+**/.env
+**/*.db
+**/*.db-journal
+
+# Misc
+*.log
+.DS_Store
+README.md

@@ -30,6 +30,14 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
+# Terraform (keep .terraform.lock.hcl tracked)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
 # Editor / OS cruft
 .DS_Store
 Thumbs.db
