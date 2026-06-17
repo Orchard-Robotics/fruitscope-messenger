@@ -11,6 +11,7 @@ resource "google_sql_database_instance" "verdant" {
 
   settings {
     tier              = var.db_tier
+    edition           = "ENTERPRISE" # shared-core tiers (db-f1-micro) require ENTERPRISE, not ENTERPRISE_PLUS
     availability_type = "ZONAL"
     disk_size         = 10
     disk_autoresize   = true
