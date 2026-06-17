@@ -1,0 +1,124 @@
+import { AnimatePresence, motion } from "framer-motion";
+import { SmilePlus } from "lucide-react";
+import { useState } from "react";
+
+import type { ID, Message, User } from "@shared/index";
+import { REACTION_EMOJI } from "@shared/index";
+import { cn } from "@/lib/cn";
+import { timeOfDay } from "@/lib/format";
+import { chat } from "@/lib/socket";
+import { Avatar } from "./Avatar";
+
+const FALLBACK: Pick<User, "displayName" | "hue"> = { displayName: "?", hue: 0 };
+
+interface MessageItemProps {
+  message: Message;
+  author: User | undefined;
+  showHeader: boolean;
+  meId: ID;
+}
+
+export function MessageItem({ message, author, showHeader, meId }: MessageItemProps) {
+  const [picking, setPicking] = useState(false);
+
+  const react = (emoji: string) => {
+    setPicking(false);
+    void chat.react(message.id, emoji);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+      className={cn(
+        "group relative flex gap-3 px-4 hover:bg-bark-900/40",
+        showHeader ? "mt-3 pt-1" : "py-0.5",
+      )}
+    >
+      <div className="w-10 shrink-0">
+        {showHeader ? (
+          <Avatar user={author ?? FALLBACK} size={40} />
+        ) : (
+          <span className="mt-0.5 hidden select-none text-right text-[10px] leading-5 text-ink-faint group-hover:block">
+            {timeOfDay(message.createdAt)}
+          </span>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        {showHeader && (
+          <div className="flex items-baseline gap-2">
+            <span className="font-semibold text-ink">{author?.displayName ?? "Someone"}</span>
+            <span className="text-xs text-ink-faint">{timeOfDay(message.createdAt)}</span>
+          </div>
+        )}
+
+        <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink/90">
+          {message.content}
+        </p>
+
+        {message.reactions.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {message.reactions.map((r) => {
+              const mine = r.userIds.includes(meId);
+              return (
+                <button
+                  key={r.emoji}
+                  onClick={() => react(r.emoji)}
+                  className={cn(
+                    "flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition",
+                    mine
+                      ? "border-leaf-500/60 bg-leaf-500/20 text-leaf-100"
+                      : "border-bark-600 bg-bark-800/60 text-ink-dim hover:border-bark-600/80 hover:bg-bark-700",
+                  )}
+                >
+                  <span className="text-sm leading-none">{r.emoji}</span>
+                  <span className="font-semibold tabular-nums">{r.userIds.length}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Hover toolbar */}
+      <div className="absolute -top-3 right-3 opacity-0 transition group-hover:opacity-100">
+        <div className="relative">
+          <button
+            onClick={() => setPicking((v) => !v)}
+            className="glass grid size-8 place-items-center rounded-lg text-ink-dim shadow-lg transition hover:text-leaf-300"
+            title="Add reaction"
+          >
+            <SmilePlus className="size-4" />
+          </button>
+
+          <AnimatePresence>
+            {picking && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setPicking(false)} />
+                <motion.div
+                  initial={{ opacity: 0, y: 4, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.95 }}
+                  transition={{ duration: 0.14 }}
+                  className="glass absolute right-0 top-9 z-20 flex gap-1 rounded-xl p-1.5 shadow-2xl shadow-black/40"
+                >
+                  {REACTION_EMOJI.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => react(emoji)}
+                      className="grid size-8 place-items-center rounded-lg text-lg transition hover:scale-110 hover:bg-bark-700"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </motion.div>
+  );
+}

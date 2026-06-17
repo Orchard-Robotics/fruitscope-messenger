@@ -1,0 +1,175 @@
+@import "tailwindcss";
+
+/* ----------------------------------------------------------------------- */
+/* Solarpunk design tokens — warm green-black surfaces, leaf + sun accents. */
+/* ----------------------------------------------------------------------- */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", "Inter", ui-sans-serif, sans-serif;
+
+  /* Surfaces */
+  --color-bark-950: #060f0a;
+  --color-bark-900: #0a160f;
+  --color-bark-850: #0e1d14;
+  --color-bark-800: #122619;
+  --color-bark-750: #163020;
+  --color-bark-700: #1d3b29;
+  --color-bark-600: #274d36;
+
+  /* Leaf greens */
+  --color-leaf-200: #bbf7d0;
+  --color-leaf-300: #86efac;
+  --color-leaf-400: #4ade80;
+  --color-leaf-500: #22c55e;
+  --color-leaf-600: #16a34a;
+  --color-leaf-700: #15803d;
+
+  /* Muted sage */
+  --color-sage-300: #b7cdb3;
+  --color-sage-400: #8caa8a;
+  --color-sage-500: #5f7d61;
+
+  /* Sun / gold */
+  --color-sun-300: #fde68a;
+  --color-sun-400: #fbbf24;
+  --color-sun-500: #f59e0b;
+
+  /* Clay accent */
+  --color-clay-400: #f0a875;
+
+  /* Text */
+  --color-ink: #e8f1ea;
+  --color-ink-dim: #9fb6a6;
+  --color-ink-faint: #65806f;
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background-color: var(--color-bark-950);
+    background-image:
+      radial-gradient(1100px 700px at 12% -8%, color-mix(in oklab, var(--color-leaf-600) 22%, transparent), transparent 60%),
+      radial-gradient(900px 600px at 105% 8%, color-mix(in oklab, var(--color-sun-500) 14%, transparent), transparent 55%),
+      radial-gradient(800px 800px at 60% 120%, color-mix(in oklab, var(--color-leaf-700) 16%, transparent), transparent 60%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-leaf-400) 40%, transparent);
+    color: white;
+  }
+
+  /* Slim, organic scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-bark-600) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-bark-600);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--color-bark-700);
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  .glass {
+    background: color-mix(in oklab, var(--color-bark-850) 78%, transparent);
+    backdrop-filter: blur(16px) saturate(1.1);
+    border: 1px solid color-mix(in oklab, var(--color-leaf-300) 9%, transparent);
+  }
+
+  .focus-ring {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-bark-900), 0 0 0 4px color-mix(in oklab, var(--color-leaf-400) 60%, transparent);
+  }
+}
+
+/* Ambient drifting "aurora" blobs behind the app. */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.aurora span {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.5;
+  will-change: transform;
+}
+.aurora span:nth-child(1) {
+  width: 42vw;
+  height: 42vw;
+  left: -8vw;
+  top: -10vw;
+  background: radial-gradient(circle, var(--color-leaf-500), transparent 70%);
+  animation: drift 26s ease-in-out infinite;
+}
+.aurora span:nth-child(2) {
+  width: 34vw;
+  height: 34vw;
+  right: -6vw;
+  top: 8vh;
+  background: radial-gradient(circle, var(--color-sun-500), transparent 70%);
+  opacity: 0.28;
+  animation: drift 32s ease-in-out infinite reverse;
+}
+.aurora span:nth-child(3) {
+  width: 38vw;
+  height: 38vw;
+  left: 30vw;
+  bottom: -16vw;
+  background: radial-gradient(circle, var(--color-leaf-700), transparent 70%);
+  animation: drift 38s ease-in-out infinite;
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(4vw, 3vh, 0) scale(1.12);
+  }
+}
+
+@keyframes blink {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.typing-dot {
+  animation: blink 1.3s infinite ease-in-out both;
+}

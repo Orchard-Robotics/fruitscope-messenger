@@ -1,0 +1,102 @@
+// Verdant chat schema.
+//
+// Local development runs on SQLite. For production swap the datasource
+// `provider` to "postgresql" (e.g. GCP Cloud SQL) and point DATABASE_URL at
+// it — the models below are provider-agnostic.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id
+  username    String   @unique
+  displayName String
+  hue         Int
+  status      String   @default("offline")
+  createdAt   DateTime @default(now())
+
+  memberships     ChannelMember[]
+  messages        Message[]
+  reactions       Reaction[]
+  sessions        Session[]
+  reads           Read[]
+  createdChannels Channel[]       @relation("ChannelCreator")
+}
+
+model Channel {
+  id          String   @id
+  kind        String // "channel" | "dm"
+  name        String
+  topic       String   @default("")
+  isPrivate   Boolean  @default(false)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  createdBy User            @relation("ChannelCreator", fields: [createdById], references: [id])
+  members   ChannelMember[]
+  messages  Message[]
+  reads     Read[]
+}
+
+model ChannelMember {
+  channelId String
+  userId    String
+  joinedAt  DateTime @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, userId])
+}
+
+model Message {
+  id        String    @id
+  channelId String
+  authorId  String
+  content   String
+  createdAt DateTime  @default(now())
+  editedAt  DateTime?
+
+  channel   Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author    User       @relation(fields: [authorId], references: [id])
+  reactions Reaction[]
+
+  @@index([channelId, createdAt])
+}
+
+model Reaction {
+  id        String @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+}
+
+model Session {
+  token     String   @id
+  userId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Read {
+  userId     String
+  channelId  String
+  lastReadAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@id([userId, channelId])
+}
