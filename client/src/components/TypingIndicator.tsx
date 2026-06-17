@@ -26,7 +26,7 @@ export function TypingIndicator({ channelId }: { channelId: ID }) {
         {[0, 0.18, 0.36].map((delay, i) => (
           <span
             key={i}
-            className="typing-dot size-1.5 rounded-full bg-leaf-400"
+            className="typing-dot size-1.5 rounded-full bg-brand-500"
             style={{ animationDelay: `${delay}s` }}
           />
         ))}

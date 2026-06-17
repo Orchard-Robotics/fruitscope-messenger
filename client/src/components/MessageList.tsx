@@ -1,10 +1,10 @@
-import { Leaf } from "lucide-react";
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 
 import type { ID, Message } from "@shared/index";
 import { dayLabel, isNewDay } from "@/lib/format";
 import { chat } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
+import { Logo } from "./Logo";
 import { MessageItem } from "./MessageItem";
 import { TypingIndicator } from "./TypingIndicator";
 
@@ -46,7 +46,6 @@ export function MessageList({ channelId }: { channelId: ID }) {
     return out;
   }, [messages]);
 
-  // Jump to the bottom whenever the active channel changes.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -54,7 +53,6 @@ export function MessageList({ channelId }: { channelId: ID }) {
     atBottom.current = true;
   }, [channelId]);
 
-  // Keep position on prepend; otherwise follow new messages when already at bottom.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -66,7 +64,6 @@ export function MessageList({ channelId }: { channelId: ID }) {
     }
   }, [messages]);
 
-  // Follow typing indicator appearing when pinned to bottom.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && atBottom.current) el.scrollTop = el.scrollHeight;
@@ -122,11 +119,11 @@ export function MessageList({ channelId }: { channelId: ID }) {
 function DayDivider({ ts }: { ts: number }) {
   return (
     <div className="my-3 flex items-center gap-3 px-4">
-      <span className="h-px flex-1 bg-bark-700" />
-      <span className="rounded-full border border-bark-700 bg-bark-900/70 px-3 py-0.5 text-xs font-medium text-ink-dim">
+      <span className="h-px flex-1 bg-line" />
+      <span className="rounded-full border border-line bg-white px-3 py-0.5 text-xs font-medium text-ink-dim">
         {dayLabel(ts)}
       </span>
-      <span className="h-px flex-1 bg-bark-700" />
+      <span className="h-px flex-1 bg-line" />
     </div>
   );
 }
@@ -134,13 +131,11 @@ function DayDivider({ ts }: { ts: number }) {
 function Intro({ hasMessages }: { hasMessages: boolean }) {
   return (
     <div className="px-5 pb-2 pt-6">
-      <div className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-leaf-400/20 to-leaf-600/10 text-leaf-300">
-        <Leaf className="size-6" />
-      </div>
+      <Logo className="size-12" />
       <p className="mt-3 text-sm text-ink-dim">
         {hasMessages
           ? "This is the very beginning of the conversation 🌱"
-          : "No messages yet — plant the first one 🌱"}
+          : "No messages yet — send the first one 🌱"}
       </p>
     </div>
   );

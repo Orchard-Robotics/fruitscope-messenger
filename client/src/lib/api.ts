@@ -1,6 +1,6 @@
 import type { Bootstrap, User } from "@shared/index";
 
-const TOKEN_KEY = "verdant.token";
+const TOKEN_KEY = "fruitscope.token";
 
 export const tokenStore = {
   get: (): string | null => localStorage.getItem(TOKEN_KEY),

@@ -1,10 +1,11 @@
-# 🌱 Verdant
+# 🍎 FruitScope Messenger
 
-A simplified, real-time Slack clone with a calm, solarpunk look. Channels, DMs,
-presence, typing indicators, emoji reactions and unread badges — all over
-Socket.IO, all in strict TypeScript, all running locally under Vite.
+A simplified, real-time Slack-style chat app with a clean, light FruitScope
+look (white + green). Channels, DMs, presence, typing indicators, emoji
+reactions and unread badges — all over Socket.IO, all in strict TypeScript,
+responsive down to mobile.
 
-<sub>React 19 · Vite 6 · Tailwind v4 · Socket.IO · Express · Prisma + SQLite · Zustand</sub>
+<sub>React 19 · Vite 6 · Tailwind v4 · Socket.IO · Express · Prisma + Postgres · Zustand</sub>
 
 ---
 

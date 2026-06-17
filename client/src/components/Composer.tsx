@@ -34,7 +34,6 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
     idleTimer.current = setTimeout(stopTyping, TYPING_IDLE_MS);
   };
 
-  // Reset draft + typing state when switching channels / unmounting.
   useEffect(() => {
     setText("");
     setEmojiOpen(false);
@@ -57,17 +56,17 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
     setText("");
     stopTyping();
     const res = await chat.send(channelId, content);
-    if (!res.ok) setText(content); // restore draft on failure
+    if (!res.ok) setText(content);
     textareaRef.current?.focus();
   };
 
   return (
     <div className="px-4 pb-5 pt-1">
-      <div className="glass relative flex items-end gap-2 rounded-2xl px-3 py-2 shadow-lg shadow-black/20 focus-within:focus-ring">
+      <div className="relative flex items-end gap-2 rounded-2xl border border-line bg-white px-3 py-2 shadow-sm focus-within:focus-ring">
         <div className="relative">
           <button
             onClick={() => setEmojiOpen((v) => !v)}
-            className="grid size-9 place-items-center rounded-xl text-ink-dim transition hover:bg-bark-700 hover:text-leaf-300"
+            className="grid size-9 place-items-center rounded-xl text-ink-dim transition hover:bg-surface-2 hover:text-brand-600"
             title="Emoji"
           >
             <Smile className="size-5" />
@@ -81,7 +80,7 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 6, scale: 0.95 }}
                   transition={{ duration: 0.14 }}
-                  className="glass absolute bottom-12 left-0 z-20 flex gap-1 rounded-xl p-1.5 shadow-2xl shadow-black/40"
+                  className="absolute bottom-12 left-0 z-20 flex gap-1 rounded-xl border border-line bg-white p-1.5 shadow-lg"
                 >
                   {REACTION_EMOJI.map((emoji) => (
                     <button
@@ -91,7 +90,7 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
                         setEmojiOpen(false);
                         textareaRef.current?.focus();
                       }}
-                      className="grid size-8 place-items-center rounded-lg text-lg transition hover:scale-110 hover:bg-bark-700"
+                      className="grid size-8 place-items-center rounded-lg text-lg transition hover:scale-110 hover:bg-surface-2"
                     >
                       {emoji}
                     </button>
@@ -127,8 +126,8 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
           className={cn(
             "grid size-9 shrink-0 place-items-center rounded-xl transition",
             text.trim()
-              ? "bg-gradient-to-br from-leaf-400 to-leaf-600 text-bark-950 hover:brightness-105"
-              : "bg-bark-700 text-ink-faint",
+              ? "bg-brand-500 text-white hover:bg-brand-600"
+              : "bg-surface-2 text-ink-faint",
           )}
           title="Send"
         >

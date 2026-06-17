@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
-import { ArrowRight, Leaf, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "@/lib/cn";
+import { Logo } from "./Logo";
 
 const SUGGESTIONS = ["willow", "fern", "sol", "robin", "moss"];
 
@@ -35,15 +36,15 @@ export function Login({
         initial={{ opacity: 0, y: 16, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="glass relative z-10 w-full max-w-md rounded-3xl p-8 shadow-2xl shadow-black/40"
+        className="relative z-10 w-full max-w-md rounded-3xl border border-line bg-white p-8 shadow-xl shadow-brand-700/5"
       >
         <div className="mb-7 flex items-center gap-3">
-          <div className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-leaf-400 to-leaf-600 text-bark-950 shadow-lg shadow-leaf-600/30">
-            <Leaf className="size-6" strokeWidth={2.5} />
-          </div>
+          <Logo className="size-12" />
           <div>
-            <h1 className="font-display text-2xl font-bold tracking-tight text-ink">Verdant</h1>
-            <p className="text-sm text-ink-dim">A calmer place to talk.</p>
+            <h1 className="font-display text-2xl font-bold tracking-tight text-ink">
+              FruitScope Messenger
+            </h1>
+            <p className="text-sm text-ink-dim">Fast, real-time team chat.</p>
           </div>
         </div>
 
@@ -62,7 +63,7 @@ export function Login({
               placeholder="e.g. willow"
               autoComplete="off"
               spellCheck={false}
-              className="w-full rounded-xl border border-bark-600 bg-bark-900/70 px-4 py-3 text-ink placeholder:text-ink-faint focus:focus-ring"
+              className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-ink placeholder:text-ink-faint focus:focus-ring"
             />
           </Field>
 
@@ -72,25 +73,25 @@ export function Login({
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Willow Vale"
               autoComplete="off"
-              className="w-full rounded-xl border border-bark-600 bg-bark-900/70 px-4 py-3 text-ink placeholder:text-ink-faint focus:focus-ring"
+              className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-ink placeholder:text-ink-faint focus:focus-ring"
             />
           </Field>
 
-          {error && <p className="text-sm text-clay-400">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
 
           <button
             type="submit"
             disabled={busy || !username.trim()}
-            className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-leaf-400 to-leaf-600 px-4 py-3 font-semibold text-bark-950 shadow-lg shadow-leaf-600/25 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+            className="group flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-3 font-semibold text-white shadow-sm shadow-brand-700/20 transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Entering the grove…" : "Enter Verdant"}
+            {busy ? "Signing in…" : "Sign in"}
             <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />
           </button>
         </form>
 
-        <div className="mt-7 border-t border-bark-700 pt-5">
+        <div className="mt-7 border-t border-line pt-5">
           <p className="mb-3 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-ink-faint">
-            <Sparkles className="size-3.5" /> Hop in as a resident
+            <Sparkles className="size-3.5" /> Jump in as a teammate
           </p>
           <div className="flex flex-wrap gap-2">
             {SUGGESTIONS.map((name) => (
@@ -102,7 +103,7 @@ export function Login({
                   setUsername(name);
                   void submit(name);
                 }}
-                className="rounded-full border border-bark-600 bg-bark-800/60 px-3 py-1.5 text-sm text-sage-300 transition hover:border-leaf-500/50 hover:text-leaf-200 disabled:opacity-50"
+                className="rounded-full border border-line bg-surface px-3 py-1.5 text-sm text-ink-dim transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50"
               >
                 {name}
               </button>

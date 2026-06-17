@@ -12,7 +12,7 @@ export function Avatar({ user, size = 36, className }: AvatarProps) {
   return (
     <div
       className={cn(
-        "grid shrink-0 select-none place-items-center rounded-xl font-semibold text-white shadow-sm",
+        "grid shrink-0 select-none place-items-center rounded-xl font-semibold text-white shadow-sm ring-1 ring-black/5",
         className,
       )}
       style={{

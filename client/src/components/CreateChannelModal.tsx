@@ -59,7 +59,7 @@ export function CreateChannelModal({ open, onClose }: { open: boolean; onClose: 
       >
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink-dim">Name</span>
-          <div className="flex items-center gap-2 rounded-xl border border-bark-600 bg-bark-900/70 px-3 focus-within:focus-ring">
+          <div className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3 focus-within:focus-ring">
             {isPrivate ? (
               <Lock className="size-4 text-ink-faint" />
             ) : (
@@ -87,14 +87,14 @@ export function CreateChannelModal({ open, onClose }: { open: boolean; onClose: 
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder="What's this channel about?"
-            className="w-full rounded-xl border border-bark-600 bg-bark-900/70 px-4 py-3 text-ink placeholder:text-ink-faint focus:focus-ring"
+            className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-ink placeholder:text-ink-faint focus:focus-ring"
           />
         </label>
 
         <button
           type="button"
           onClick={() => setIsPrivate((v) => !v)}
-          className="flex w-full items-center justify-between rounded-xl border border-bark-600 bg-bark-900/40 px-4 py-3 text-left transition hover:border-bark-600/80"
+          className="flex w-full items-center justify-between rounded-xl border border-line bg-surface/60 px-4 py-3 text-left transition hover:bg-surface-2"
         >
           <span>
             <span className="block text-sm font-medium text-ink">Private channel</span>
@@ -103,32 +103,32 @@ export function CreateChannelModal({ open, onClose }: { open: boolean; onClose: 
           <span
             className={cn(
               "relative h-6 w-11 rounded-full transition",
-              isPrivate ? "bg-leaf-500" : "bg-bark-600",
+              isPrivate ? "bg-brand-500" : "bg-surface-2 ring-1 ring-line",
             )}
           >
             <span
               className={cn(
-                "absolute top-0.5 size-5 rounded-full bg-white transition",
+                "absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition",
                 isPrivate ? "left-[22px]" : "left-0.5",
               )}
             />
           </span>
         </button>
 
-        {error && <p className="text-sm text-clay-400">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
             onClick={close}
-            className="rounded-xl px-4 py-2.5 text-ink-dim transition hover:bg-bark-700 hover:text-ink"
+            className="rounded-xl px-4 py-2.5 text-ink-dim transition hover:bg-surface-2 hover:text-ink"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy || !name.trim()}
-            className="rounded-xl bg-gradient-to-br from-leaf-400 to-leaf-600 px-5 py-2.5 font-semibold text-bark-950 transition hover:brightness-105 disabled:opacity-50"
+            className="rounded-xl bg-brand-500 px-5 py-2.5 font-semibold text-white transition hover:bg-brand-600 disabled:opacity-50"
           >
             Create
           </button>
