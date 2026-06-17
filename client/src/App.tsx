@@ -1,10 +1,10 @@
-import { Leaf } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { rest, tokenStore } from "@/lib/api";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
 import { Login } from "./components/Login";
+import { Logo } from "./components/Logo";
 import { Workspace } from "./components/Workspace";
 
 export function App() {
@@ -46,33 +46,17 @@ export function App() {
     store.loadBootstrap(await rest.bootstrap(token));
   };
 
-  return (
-    <>
-      <div className="aurora" aria-hidden>
-        <span />
-        <span />
-        <span />
-      </div>
-
-      {session === "loading" ? (
-        <Splash />
-      ) : session === "anon" ? (
-        <Login onLogin={handleLogin} />
-      ) : (
-        <Workspace />
-      )}
-    </>
-  );
+  if (session === "loading") return <Splash />;
+  if (session === "anon") return <Login onLogin={handleLogin} />;
+  return <Workspace />;
 }
 
 function Splash() {
   return (
     <div className="relative grid min-h-dvh place-items-center">
       <div className="flex flex-col items-center gap-3 text-ink-dim">
-        <div className="grid size-12 animate-pulse place-items-center rounded-2xl bg-gradient-to-br from-leaf-400 to-leaf-600 text-bark-950">
-          <Leaf className="size-6" strokeWidth={2.5} />
-        </div>
-        <p className="text-sm">Growing your grove…</p>
+        <Logo className="size-12 animate-pulse" />
+        <p className="text-sm">Loading FruitScope Messenger…</p>
       </div>
     </div>
   );

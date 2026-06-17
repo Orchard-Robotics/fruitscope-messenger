@@ -53,7 +53,7 @@ const io = new Server<
 attachSockets(io);
 
 httpServer.listen(PORT, () => {
-  console.log(`🌱 Verdant server listening on http://localhost:${PORT}`);
+  console.log(`🌱 FruitScope Messenger server listening on http://localhost:${PORT}`);
 });
 
 // Graceful shutdown: close sockets (clients get a clean close frame and

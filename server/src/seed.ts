@@ -38,7 +38,7 @@ export async function seed(): Promise<void> {
   });
 
   const channelDefs = [
-    { key: "general", topic: "Welcome to Verdant 🌱 — say hello!", by: willow },
+    { key: "general", topic: "Welcome to FruitScope Messenger 🌱 — say hello!", by: willow },
     { key: "solarpunk", topic: "Greener futures, brighter cities ☀️", by: fern },
     { key: "engineering", topic: "Shipping the canopy, one commit at a time", by: robin },
     { key: "random", topic: "Off-topic, memes and good vibes", by: sol },

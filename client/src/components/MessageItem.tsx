@@ -32,7 +32,7 @@ export function MessageItem({ message, author, showHeader, meId }: MessageItemPr
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18 }}
       className={cn(
-        "group relative flex gap-3 px-4 hover:bg-bark-900/40",
+        "group relative flex gap-3 px-4 hover:bg-surface",
         showHeader ? "mt-3 pt-1" : "py-0.5",
       )}
     >
@@ -69,8 +69,8 @@ export function MessageItem({ message, author, showHeader, meId }: MessageItemPr
                   className={cn(
                     "flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition",
                     mine
-                      ? "border-leaf-500/60 bg-leaf-500/20 text-leaf-100"
-                      : "border-bark-600 bg-bark-800/60 text-ink-dim hover:border-bark-600/80 hover:bg-bark-700",
+                      ? "border-brand-300 bg-brand-50 text-brand-700"
+                      : "border-line bg-surface text-ink-dim hover:bg-surface-2",
                   )}
                 >
                   <span className="text-sm leading-none">{r.emoji}</span>
@@ -87,7 +87,7 @@ export function MessageItem({ message, author, showHeader, meId }: MessageItemPr
         <div className="relative">
           <button
             onClick={() => setPicking((v) => !v)}
-            className="glass grid size-8 place-items-center rounded-lg text-ink-dim shadow-lg transition hover:text-leaf-300"
+            className="grid size-8 place-items-center rounded-lg border border-line bg-white text-ink-dim shadow-sm transition hover:text-brand-600"
             title="Add reaction"
           >
             <SmilePlus className="size-4" />
@@ -102,13 +102,13 @@ export function MessageItem({ message, author, showHeader, meId }: MessageItemPr
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 4, scale: 0.95 }}
                   transition={{ duration: 0.14 }}
-                  className="glass absolute right-0 top-9 z-20 flex gap-1 rounded-xl p-1.5 shadow-2xl shadow-black/40"
+                  className="absolute right-0 top-9 z-20 flex gap-1 rounded-xl border border-line bg-white p-1.5 shadow-lg"
                 >
                   {REACTION_EMOJI.map((emoji) => (
                     <button
                       key={emoji}
                       onClick={() => react(emoji)}
-                      className="grid size-8 place-items-center rounded-lg text-lg transition hover:scale-110 hover:bg-bark-700"
+                      className="grid size-8 place-items-center rounded-lg text-lg transition hover:scale-110 hover:bg-surface-2"
                     >
                       {emoji}
                     </button>

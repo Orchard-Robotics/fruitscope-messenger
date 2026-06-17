@@ -1,4 +1,4 @@
-import { Hash, Leaf, Lock, LogOut, Plus, Search } from "lucide-react";
+import { Hash, Lock, LogOut, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { Channel, ID, User } from "@shared/index";
@@ -8,9 +8,16 @@ import { chat, disconnectSocket } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
 import { CreateChannelModal } from "./CreateChannelModal";
+import { Logo } from "./Logo";
 import { PresenceDot } from "./PresenceDot";
 
-export function Sidebar() {
+export function Sidebar({
+  navOpen = false,
+  onNavigate,
+}: {
+  navOpen?: boolean;
+  onNavigate?: () => void;
+}) {
   const me = useChatStore((s) => s.me);
   const users = useChatStore((s) => s.users);
   const channels = useChatStore((s) => s.channels);
@@ -29,7 +36,6 @@ export function Sidebar() {
     [channels],
   );
 
-  // Map each existing DM to its partner so we can show unread on the people list.
   const dmByPartner = useMemo(() => {
     const map = new Map<ID, Channel>();
     if (!me) return map;
@@ -63,6 +69,7 @@ export function Sidebar() {
   const select = (channelId: ID) => {
     setActiveChannel(channelId);
     chat.read(channelId);
+    onNavigate?.(); // close the drawer on mobile
   };
 
   const openDm = async (userId: ID) => {
@@ -79,22 +86,26 @@ export function Sidebar() {
   if (!me) return null;
 
   return (
-    <aside className="z-10 flex h-full w-72 flex-col border-r border-bark-700/70 bg-bark-900/60 backdrop-blur-xl">
+    <aside
+      className={cn(
+        "z-30 flex h-full w-72 shrink-0 flex-col border-r border-line bg-surface/95 backdrop-blur-xl",
+        "fixed inset-y-0 left-0 transition-transform duration-200 md:static md:translate-x-0",
+        navOpen ? "translate-x-0 shadow-2xl shadow-ink/20" : "-translate-x-full md:translate-x-0",
+      )}
+    >
       <header className="flex items-center gap-3 px-5 pb-3 pt-5">
-        <div className="grid size-10 place-items-center rounded-xl bg-gradient-to-br from-leaf-400 to-leaf-600 text-bark-950 shadow-md shadow-leaf-600/30">
-          <Leaf className="size-5" strokeWidth={2.5} />
-        </div>
-        <div className="min-w-0">
-          <h1 className="font-display text-lg font-bold leading-tight text-ink">Verdant</h1>
+        <Logo className="size-9" />
+        <div className="min-w-0 leading-tight">
+          <h1 className="font-display text-lg font-bold text-ink">FruitScope</h1>
           <p className="flex items-center gap-1.5 text-xs text-ink-dim">
-            <span className="size-1.5 rounded-full bg-leaf-400" />
-            {onlineCount} online
+            <span className="size-1.5 rounded-full bg-brand-500" />
+            {onlineCount} online · Messenger
           </p>
         </div>
       </header>
 
       <div className="px-3 pb-2">
-        <div className="flex items-center gap-2 rounded-xl border border-bark-700 bg-bark-950/40 px-3 py-2 focus-within:focus-ring">
+        <div className="flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 focus-within:focus-ring">
           <Search className="size-4 text-ink-faint" />
           <input
             value={query}
@@ -143,10 +154,10 @@ export function Sidebar() {
         </section>
       </nav>
 
-      <footer className="flex items-center gap-3 border-t border-bark-700/70 px-3 py-3">
+      <footer className="flex items-center gap-3 border-t border-line px-3 py-3">
         <div className="relative">
           <Avatar user={me} size={36} />
-          <PresenceDot status={me.status} className="absolute -bottom-0.5 -right-0.5" />
+          <PresenceDot status={me.status} className="absolute -bottom-0.5 -right-0.5" ring="ring-surface" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-ink">{me.displayName}</p>
@@ -155,7 +166,7 @@ export function Sidebar() {
         <button
           onClick={signOut}
           title="Sign out"
-          className="grid size-9 place-items-center rounded-lg text-ink-dim transition hover:bg-bark-700 hover:text-clay-400"
+          className="grid size-9 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2 hover:text-danger"
         >
           <LogOut className="size-4" />
         </button>
@@ -176,7 +187,7 @@ function SectionHeader({ label, onAdd }: { label: string; onAdd?: () => void }) 
         <button
           onClick={onAdd}
           title="Create channel"
-          className="grid size-6 place-items-center rounded-md text-ink-faint transition hover:bg-bark-700 hover:text-leaf-300"
+          className="grid size-6 place-items-center rounded-md text-ink-faint transition hover:bg-surface-2 hover:text-brand-600"
         >
           <Plus className="size-4" />
         </button>
@@ -208,13 +219,13 @@ function ChannelRow({
         className={cn(
           "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition",
           active
-            ? "bg-leaf-500/15 text-leaf-100"
+            ? "bg-brand-500/12 text-brand-700"
             : unread > 0
-              ? "text-ink hover:bg-bark-800"
-              : "text-ink-dim hover:bg-bark-800 hover:text-ink",
+              ? "text-ink hover:bg-surface-2"
+              : "text-ink-dim hover:bg-surface-2 hover:text-ink",
         )}
       >
-        <Icon className={cn("size-4 shrink-0", active ? "text-leaf-300" : "text-ink-faint")} />
+        <Icon className={cn("size-4 shrink-0", active ? "text-brand-600" : "text-ink-faint")} />
         <span className={cn("truncate", unread > 0 && !active && "font-semibold text-ink")}>
           {channel.name}
         </span>
@@ -241,7 +252,7 @@ function PersonRow({
         onClick={onClick}
         className={cn(
           "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition",
-          active ? "bg-leaf-500/15 text-leaf-100" : "text-ink-dim hover:bg-bark-800 hover:text-ink",
+          active ? "bg-brand-500/12 text-brand-700" : "text-ink-dim hover:bg-surface-2 hover:text-ink",
         )}
       >
         <span className="relative">
@@ -249,7 +260,7 @@ function PersonRow({
           <PresenceDot
             status={person.status}
             className="absolute -bottom-1 -right-1 size-2"
-            ring={active ? "ring-bark-800" : "ring-bark-900"}
+            ring="ring-surface"
           />
         </span>
         <span className={cn("truncate", unread > 0 && "font-semibold text-ink")}>
@@ -263,7 +274,7 @@ function PersonRow({
 
 function UnreadBadge({ count }: { count: number }) {
   return (
-    <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-leaf-500 px-1.5 text-xs font-bold text-bark-950">
+    <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-brand-500 px-1.5 text-xs font-bold text-white">
       {count > 99 ? "99+" : count}
     </span>
   );
