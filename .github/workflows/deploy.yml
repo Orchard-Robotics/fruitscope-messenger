@@ -12,6 +12,11 @@ permissions:
   contents: read
   id-token: write # required for Workload Identity Federation
 
+# Cancel superseded PR runs, but never interrupt an in-flight production deploy.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/verdant/verdant
 
@@ -43,11 +48,14 @@ jobs:
         with:
           context: .
           push: true
+          provenance: false # single-arch image, no attestation manifest — faster push, cleaner for Cloud Run
           tags: |
             ${{ steps.meta.outputs.image }}
             ${{ env.IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Persistent layer cache stored alongside the image in Artifact Registry
+          # (faster + more reliable than the GHA cache for an image this size).
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max,image-manifest=true
 
   terraform:
     name: Terraform
@@ -56,8 +64,19 @@ jobs:
     defaults:
       run:
         working-directory: terraform
+    env:
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform.d/plugin-cache
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.terraform.d/plugin-cache
+          key: tf-providers-${{ hashFiles('terraform/.terraform.lock.hcl') }}
+          restore-keys: tf-providers-
+
+      - run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
 
       - uses: google-github-actions/auth@v2
         with:

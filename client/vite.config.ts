@@ -8,7 +8,7 @@ import { defineConfig } from "vite";
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER = process.env.SERVER_URL ?? "http://localhost:3001";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -16,6 +16,13 @@ export default defineConfig({
       "@": path.resolve(dirname, "src"),
     },
   },
+  build: {
+    // esbuild minification (Vite default) — explicit, plus no prod sourcemaps.
+    minify: "esbuild",
+    sourcemap: false,
+  },
+  // Strip console/debugger from the production bundle only.
+  esbuild: mode === "production" ? { drop: ["console", "debugger"] } : {},
   server: {
     port: 5173,
     proxy: {
@@ -23,4 +30,4 @@ export default defineConfig({
       "/socket.io": { target: SERVER, ws: true, changeOrigin: true },
     },
   },
-});
+}));
