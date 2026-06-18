@@ -20,10 +20,24 @@ export interface User {
   createdAt: Timestamp;
 }
 
+/**
+ * A tenant: each orchard has its own isolated chat environment (members,
+ * channels, DMs, messages) — like a Slack workspace, scoped per orchard.
+ */
+export interface Orchard {
+  id: ID;
+  /** Orchard code (e.g. "SEA"), matching FruitScope's orchard codes. */
+  code: string;
+  name: string;
+  createdAt: Timestamp;
+}
+
 export type ChannelKind = "channel" | "dm";
 
 export interface Channel {
   id: ID;
+  /** The orchard this channel belongs to. Everything is scoped by orchard. */
+  orchardId: ID;
   kind: ChannelKind;
   /** Human name for `channel`; for `dm` the client derives a name from members. */
   name: string;
@@ -49,9 +63,12 @@ export interface Message {
   reactions: Reaction[];
 }
 
-/** Everything the client needs to render the workspace on connect. */
+/** Everything the client needs to render one orchard's workspace on connect. */
 export interface Bootstrap {
   me: User;
+  /** The active orchard this session is scoped to. */
+  orchard: Orchard;
+  /** Members of this orchard. */
   users: User[];
   channels: Channel[];
   /** Most recent messages per channel, oldest-first. */

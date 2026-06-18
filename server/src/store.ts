@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import type { User as DbUser } from "@prisma/client";
+import type { Orchard as DbOrchard, User as DbUser } from "@prisma/client";
 import { nanoid } from "nanoid";
 
 import type {
@@ -8,6 +8,7 @@ import type {
   ChannelKind,
   ID,
   Message,
+  Orchard,
   Reaction,
   User,
   UserStatus,
@@ -35,9 +36,14 @@ function mapUser(row: DbUser): User {
   };
 }
 
+function mapOrchard(row: DbOrchard): Orchard {
+  return { id: row.id, code: row.code, name: row.name, createdAt: row.createdAt.getTime() };
+}
+
 function mapChannel(row: DbChannel): Channel {
   return {
     id: row.id,
+    orchardId: row.orchardId,
     kind: row.kind as ChannelKind,
     name: row.name,
     topic: row.topic,
@@ -76,12 +82,44 @@ function hashHue(seed: string): number {
 }
 
 /* ------------------------------------------------------------------ */
+/* Orchards (tenants)                                                  */
+/* ------------------------------------------------------------------ */
+
+export const orchards = {
+  all: async (): Promise<Orchard[]> =>
+    (await prisma.orchard.findMany({ orderBy: { name: "asc" } })).map(mapOrchard),
+
+  byId: async (id: ID): Promise<Orchard | undefined> => {
+    const row = await prisma.orchard.findUnique({ where: { id } });
+    return row ? mapOrchard(row) : undefined;
+  },
+
+  /** Users who belong to an orchard. */
+  members: async (orchardId: ID): Promise<User[]> => {
+    const rows = await prisma.user.findMany({
+      where: { orchards: { some: { orchardId } } },
+      orderBy: { displayName: "asc" },
+    });
+    return rows.map(mapUser);
+  },
+
+  isMember: async (orchardId: ID, userId: ID): Promise<boolean> =>
+    (await prisma.orchardMembership.count({ where: { orchardId, userId } })) > 0,
+
+  ensureMembership: async (orchardId: ID, userId: ID): Promise<void> => {
+    await prisma.orchardMembership.upsert({
+      where: { orchardId_userId: { orchardId, userId } },
+      create: { orchardId, userId },
+      update: {},
+    });
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* Users                                                               */
 /* ------------------------------------------------------------------ */
 
 export const users = {
-  all: async (): Promise<User[]> => (await prisma.user.findMany()).map(mapUser),
-
   byId: async (id: ID): Promise<User | undefined> => {
     const row = await prisma.user.findUnique({ where: { id } });
     return row ? mapUser(row) : undefined;
@@ -109,7 +147,7 @@ export const users = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Channels                                                            */
+/* Channels — always scoped to an orchard                              */
 /* ------------------------------------------------------------------ */
 
 export const channels = {
@@ -118,10 +156,11 @@ export const channels = {
     return row ? mapChannel(row) : undefined;
   },
 
-  /** Public channels are visible to everyone; private channels & DMs only to members. */
-  visibleTo: async (userId: ID): Promise<Channel[]> => {
+  /** Channels in `orchardId` that are public, or that the user is a member of. */
+  visibleTo: async (userId: ID, orchardId: ID): Promise<Channel[]> => {
     const rows = await prisma.channel.findMany({
       where: {
+        orchardId,
         OR: [
           { kind: "channel", isPrivate: false },
           { members: { some: { userId } } },
@@ -134,6 +173,7 @@ export const channels = {
   },
 
   create: async (input: {
+    orchardId: ID;
     kind: ChannelKind;
     name: string;
     topic?: string;
@@ -144,6 +184,7 @@ export const channels = {
     const row = await prisma.channel.create({
       data: {
         id: nanoid(10),
+        orchard: { connect: { id: input.orchardId } },
         kind: input.kind,
         name: input.name,
         topic: input.topic ?? "",
@@ -165,9 +206,10 @@ export const channels = {
     return channels.byId(channelId);
   },
 
-  findDm: async (a: ID, b: ID): Promise<Channel | undefined> => {
+  findDm: async (orchardId: ID, a: ID, b: ID): Promise<Channel | undefined> => {
     const row = await prisma.channel.findFirst({
       where: {
+        orchardId,
         kind: "dm",
         AND: [{ members: { some: { userId: a } } }, { members: { some: { userId: b } } }],
       },
@@ -177,8 +219,12 @@ export const channels = {
   },
 };
 
-/** A user may read/write a channel if it is public, or they are a member. */
-export function canAccess(channel: Channel, userId: ID): boolean {
+/**
+ * A user may read/write a channel only within their orchard, and only if it is
+ * public or they are a member.
+ */
+export function canAccess(channel: Channel, userId: ID, orchardId: ID): boolean {
+  if (channel.orchardId !== orchardId) return false;
   return (channel.kind === "channel" && !channel.isPrivate) || channel.memberIds.includes(userId);
 }
 
@@ -248,14 +294,18 @@ export const reads = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Bootstrap snapshot                                                  */
+/* Bootstrap snapshot — for one (user, orchard)                        */
 /* ------------------------------------------------------------------ */
 
-export async function bootstrap(userId: ID): Promise<Bootstrap> {
-  const me = await users.byId(userId);
+export async function bootstrap(userId: ID, orchardId: ID): Promise<Bootstrap> {
+  const [me, orchard] = await Promise.all([users.byId(userId), orchards.byId(orchardId)]);
   if (!me) throw new Error(`Unknown user ${userId}`);
+  if (!orchard) throw new Error(`Unknown orchard ${orchardId}`);
 
-  const [allUsers, visible] = await Promise.all([users.all(), channels.visibleTo(userId)]);
+  const [members, visible] = await Promise.all([
+    orchards.members(orchardId),
+    channels.visibleTo(userId, orchardId),
+  ]);
 
   const entries = await Promise.all(
     visible.map(
@@ -263,5 +313,5 @@ export async function bootstrap(userId: ID): Promise<Bootstrap> {
     ),
   );
 
-  return { me, users: allUsers, channels: visible, messages: Object.fromEntries(entries) };
+  return { me, orchard, users: members, channels: visible, messages: Object.fromEntries(entries) };
 }

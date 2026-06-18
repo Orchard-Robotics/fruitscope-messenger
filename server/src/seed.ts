@@ -18,39 +18,47 @@ const mkUser = (
   status: UserStatus,
 ): SeedUser => ({ id: nanoid(10), username, displayName, hue, status });
 
-/**
- * Populates a believable little workspace the first time the DB is empty so the
- * app looks alive (and screenshots well) before any real users sign in.
- */
-export async function seed(): Promise<void> {
-  if ((await prisma.user.count()) > 0) return;
+interface SeedLine {
+  channel: string;
+  author: SeedUser;
+  text: string;
+  gap: number;
+  reacts?: Array<{ emoji: string; by: SeedUser }>;
+}
 
-  const willow = mkUser("willow", "Willow Vale", 96, "online");
-  const fern = mkUser("fern", "Fern Okafor", 150, "online");
-  const sol = mkUser("sol", "Sol Castellanos", 42, "away");
-  const moss = mkUser("moss", "Moss Byrne", 122, "offline");
-  const robin = mkUser("robin", "Robin Asher", 196, "online");
-  const people = [willow, fern, sol, moss, robin];
+interface OrchardSpec {
+  code: string;
+  name: string;
+  people: SeedUser[];
+  channels: Array<{ key: string; topic: string; by: SeedUser }>;
+  script: SeedLine[];
+}
 
-  const start = Date.now() - 1000 * 60 * 60 * 5;
-  await prisma.user.createMany({
-    data: people.map((u) => ({ ...u, createdAt: new Date(start) })),
+async function seedOrchard(spec: OrchardSpec, start: number): Promise<void> {
+  const orchardId = nanoid(10);
+  await prisma.orchard.create({
+    data: { id: orchardId, code: spec.code, name: spec.name, createdAt: new Date(start) },
   });
 
-  const channelDefs = [
-    { key: "general", topic: "Welcome to FruitScope Messenger 🌱 — say hello!", by: willow },
-    { key: "solarpunk", topic: "Greener futures, brighter cities ☀️", by: fern },
-    { key: "engineering", topic: "Shipping the canopy, one commit at a time", by: robin },
-    { key: "random", topic: "Off-topic, memes and good vibes", by: sol },
-  ];
+  for (const u of spec.people) {
+    await prisma.user.upsert({
+      where: { id: u.id },
+      create: { ...u, createdAt: new Date(start) },
+      update: {},
+    });
+    await prisma.orchardMembership.create({
+      data: { orchardId, userId: u.id, joinedAt: new Date(start) },
+    });
+  }
 
   const channelId: Record<string, string> = {};
-  for (const def of channelDefs) {
+  for (const def of spec.channels) {
     const id = nanoid(10);
     channelId[def.key] = id;
     await prisma.channel.create({
       data: {
         id,
+        orchard: { connect: { id: orchardId } },
         kind: "channel",
         name: def.key,
         topic: def.topic,
@@ -58,7 +66,7 @@ export async function seed(): Promise<void> {
         createdAt: new Date(start),
         createdBy: { connect: { id: def.by.id } },
         members: {
-          create: people.map((u) => ({
+          create: spec.people.map((u) => ({
             user: { connect: { id: u.id } },
             joinedAt: new Date(start),
           })),
@@ -73,26 +81,7 @@ export async function seed(): Promise<void> {
     return new Date(clock);
   };
 
-  const script: Array<{
-    channel: string;
-    author: SeedUser;
-    text: string;
-    gap: number;
-    reacts?: Array<{ emoji: string; by: SeedUser }>;
-  }> = [
-    { channel: "general", author: willow, text: "Morning everyone 🌿 the greenhouse dashboard is live!", gap: 2, reacts: [{ emoji: "🌱", by: fern }, { emoji: "🎉", by: robin }] },
-    { channel: "general", author: robin, text: "Beautiful work Willow. The solar uptime chart is gorgeous.", gap: 3 },
-    { channel: "general", author: fern, text: "Adding it to the community wiki today 💚", gap: 4, reacts: [{ emoji: "💚", by: willow }] },
-    { channel: "solarpunk", author: fern, text: "New rooftop garden proposal is up for review ☀️🍃", gap: 6, reacts: [{ emoji: "☀️", by: sol }, { emoji: "🍃", by: robin }, { emoji: "🌿", by: willow }] },
-    { channel: "solarpunk", author: sol, text: "Love it. Can we get pollinator corridors between the blocks?", gap: 5 },
-    { channel: "solarpunk", author: fern, text: "Already sketched — bees first 🐝", gap: 3, reacts: [{ emoji: "🌱", by: sol }] },
-    { channel: "engineering", author: robin, text: "Socket reconnection logic merged. Latency down to ~12ms locally 🔥", gap: 7, reacts: [{ emoji: "🔥", by: willow }, { emoji: "👏", by: fern }] },
-    { channel: "engineering", author: willow, text: "Blazing. Let's profile the message list virtualisation next.", gap: 4 },
-    { channel: "random", author: sol, text: "Found this trailing rosemary for the office windowsill 🌿", gap: 9 },
-    { channel: "random", author: robin, text: "It's thriving. Unlike my succulents 😅", gap: 2, reacts: [{ emoji: "🍃", by: sol }] },
-  ];
-
-  for (const line of script) {
+  for (const line of spec.script) {
     const id = channelId[line.channel];
     if (!id) continue;
     await prisma.message.create({
@@ -115,6 +104,62 @@ export async function seed(): Promise<void> {
       },
     });
   }
+}
 
-  console.log(`🌱 Seeded ${people.length} people and ${channelDefs.length} channels`);
+/**
+ * Populates two fully-isolated orchards the first time the DB is empty, so the
+ * per-orchard scoping is obvious (different members, channels and history).
+ */
+export async function seed(): Promise<void> {
+  if ((await prisma.user.count()) > 0) return;
+
+  const start = Date.now() - 1000 * 60 * 60 * 5;
+
+  const willow = mkUser("willow", "Willow Vale", 96, "online");
+  const fern = mkUser("fern", "Fern Okafor", 150, "online");
+  const sol = mkUser("sol", "Sol Castellanos", 42, "away");
+
+  const robin = mkUser("robin", "Robin Asher", 196, "online");
+  const moss = mkUser("moss", "Moss Byrne", 122, "offline");
+  const dale = mkUser("dale", "Dale Whitmore", 280, "online");
+
+  const sunrise: OrchardSpec = {
+    code: "SUN",
+    name: "Sunrise Orchard",
+    people: [willow, fern, sol],
+    channels: [
+      { key: "general", topic: "Welcome to Sunrise Orchard 🌅 — say hello!", by: willow },
+      { key: "harvest", topic: "Picking schedules & yield numbers 🍎", by: fern },
+      { key: "random", topic: "Off-topic & good vibes", by: sol },
+    ],
+    script: [
+      { channel: "general", author: willow, text: "Morning team 🌿 row 14 is ready for the scanner today.", gap: 2, reacts: [{ emoji: "🌱", by: fern }] },
+      { channel: "general", author: fern, text: "On it — calibrating now.", gap: 3 },
+      { channel: "harvest", author: fern, text: "Block A is trending 8% over last week's yield 🍎", gap: 6, reacts: [{ emoji: "🎉", by: willow }, { emoji: "🔥", by: sol }] },
+      { channel: "harvest", author: sol, text: "Beautiful. Let's hold the south rows one more day.", gap: 4 },
+      { channel: "random", author: sol, text: "Coffee's on in the packing shed ☀️", gap: 8 },
+    ],
+  };
+
+  const valley: OrchardSpec = {
+    code: "VAL",
+    name: "Valley Grove",
+    people: [robin, moss, dale],
+    channels: [
+      { key: "general", topic: "Welcome to Valley Grove 🌾 — say hello!", by: robin },
+      { key: "logistics", topic: "Bins, trucks & cold storage 🚚", by: dale },
+      { key: "weather", topic: "Frost watch and forecasts ❄️", by: moss },
+    ],
+    script: [
+      { channel: "general", author: robin, text: "Hey Valley 👋 new scan drone arrives Thursday.", gap: 2, reacts: [{ emoji: "🎉", by: dale }] },
+      { channel: "logistics", author: dale, text: "Two reefer trucks booked for the Friday pull.", gap: 5, reacts: [{ emoji: "👏", by: robin }] },
+      { channel: "weather", author: moss, text: "Possible frost Sunday night — prepping the wind machines ❄️", gap: 7, reacts: [{ emoji: "🍃", by: dale }] },
+      { channel: "weather", author: robin, text: "Thanks Moss. I'll top off the fuel.", gap: 3 },
+    ],
+  };
+
+  await seedOrchard(sunrise, start);
+  await seedOrchard(valley, start);
+
+  console.log("🌱 Seeded 2 orchards (Sunrise Orchard, Valley Grove)");
 }

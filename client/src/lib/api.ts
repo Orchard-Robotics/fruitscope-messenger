@@ -1,4 +1,4 @@
-import type { Bootstrap, User } from "@shared/index";
+import type { Bootstrap, Orchard, User } from "@shared/index";
 
 const TOKEN_KEY = "fruitscope.token";
 
@@ -24,10 +24,11 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string):
 }
 
 export const rest = {
-  login: (username: string, displayName?: string) =>
-    request<{ token: string; user: User }>("/auth/login", {
+  orchards: () => request<Orchard[]>("/orchards"),
+  login: (username: string, orchardId: string, displayName?: string) =>
+    request<{ token: string; user: User; orchard: Orchard }>("/auth/login", {
       method: "POST",
-      body: JSON.stringify(displayName ? { username, displayName } : { username }),
+      body: JSON.stringify({ username, orchardId, ...(displayName ? { displayName } : {}) }),
     }),
   me: (token: string) => request<User>("/me", {}, token),
   bootstrap: (token: string) => request<Bootstrap>("/bootstrap", {}, token),
