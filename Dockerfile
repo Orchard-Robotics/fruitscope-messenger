@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -
 COPY package.json package-lock.json ./
 COPY server/package.json ./server/
 COPY client/package.json ./client/
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Build everything.
 COPY . .
