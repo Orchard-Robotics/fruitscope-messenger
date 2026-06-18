@@ -62,7 +62,7 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
 
   return (
     <div className="px-4 pb-5 pt-1">
-      <div className="relative flex items-end gap-2 rounded-2xl border border-line bg-white px-3 py-2 shadow-sm focus-within:focus-ring">
+      <div className="relative flex items-end gap-2 rounded-[26px] border border-line bg-canvas px-3 py-2 shadow-floating transition focus-within:border-brand-400">
         <div className="relative">
           <button
             onClick={() => setEmojiOpen((v) => !v)}
@@ -124,7 +124,7 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
           onClick={() => void send()}
           disabled={!text.trim()}
           className={cn(
-            "grid size-9 shrink-0 place-items-center rounded-xl transition",
+            "grid size-9 shrink-0 place-items-center rounded-full transition",
             text.trim()
               ? "bg-brand-500 text-white hover:bg-brand-600"
               : "bg-surface-2 text-ink-faint",

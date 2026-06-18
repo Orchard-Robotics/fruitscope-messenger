@@ -47,12 +47,12 @@ export function Login({
   };
 
   return (
-    <div className="relative grid min-h-dvh place-items-center overflow-hidden px-6">
+    <div className="glow glow-breathe relative grid min-h-dvh place-items-center overflow-hidden px-6">
       <motion.div
         initial={{ opacity: 0, y: 16, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="relative z-10 w-full max-w-md rounded-3xl border border-line bg-white p-8 shadow-xl shadow-brand-700/5"
+        className="relative z-10 w-full max-w-md rounded-3xl border border-line bg-white p-8 shadow-floating"
       >
         <div className="mb-7 flex items-center gap-3">
           <Logo className="size-12" />
@@ -112,7 +112,7 @@ export function Login({
           <button
             type="submit"
             disabled={busy || !username.trim() || !orchardId}
-            className="group flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-3 font-semibold text-white shadow-sm shadow-brand-700/20 transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="group flex w-full items-center justify-center gap-2 rounded-full bg-brand-500 px-4 py-3 font-semibold text-white shadow-soft transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? "Signing in…" : "Sign in"}
             <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />

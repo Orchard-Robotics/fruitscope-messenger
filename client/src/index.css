@@ -1,36 +1,43 @@
 @import "tailwindcss";
 
 /* ----------------------------------------------------------------------- */
-/* FruitScope design tokens — light, airy, white surfaces + brand green.    */
+/* FruitScope AI design language (Gemini-style): white surfaces, neutral    */
+/* greys, muted green accent (#3f8a66), soft green glow. Mirrors the tokens  */
+/* in fruitscope/cloud/client ai-chat-home.css.                             */
 /* ----------------------------------------------------------------------- */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Outfit", "Inter", ui-sans-serif, sans-serif;
+  --font-sans:
+    "Google Sans", "Inter", "Roboto", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: var(--font-sans);
 
-  /* Brand green (FruitScope) */
-  --color-brand-50: #e7f9ee;
-  --color-brand-100: #c8f0d6;
-  --color-brand-200: #93e3ad;
-  --color-brand-300: #5fd285;
-  --color-brand-400: #2bbd5b;
-  --color-brand-500: #01b034;
-  --color-brand-600: #009a2e;
-  --color-brand-700: #017d27;
+  /* Green accent + soft mint tints */
+  --color-brand-50: #f3f9f6;
+  --color-brand-100: #e3f1ea;
+  --color-brand-200: #c8e3d5;
+  --color-brand-300: #a9d4bf;
+  --color-brand-400: #5fa583;
+  --color-brand-500: #3f8a66;
+  --color-brand-600: #357a59;
+  --color-brand-700: #2f6b4e;
 
-  /* Surfaces (light) */
+  /* Surfaces */
   --color-canvas: #ffffff;
-  --color-surface: #f6f8f6;
-  --color-surface-2: #eef2ee;
-  --color-line: #e4eae5;
+  --color-surface: #f7f7f7;
+  --color-surface-2: #ededed;
+  --color-line: #e0e0e0;
 
   /* Text */
-  --color-ink: #16231b;
-  --color-ink-dim: #5a6b60;
-  --color-ink-faint: #92a398;
+  --color-ink: #1f1f1f;
+  --color-ink-dim: #5f6368;
+  --color-ink-faint: #8a8a8a;
 
   /* Accents */
-  --color-sun-500: #d97706;
-  --color-danger: #dc4d3f;
+  --color-sun-500: #d99b1c;
+  --color-danger: #d93f3f;
+
+  /* Soft, Material-ish shadows */
+  --shadow-soft: 0 1px 2px rgba(60, 64, 67, 0.12), 0 2px 6px rgba(60, 64, 67, 0.08);
+  --shadow-floating: 0 1px 2px rgba(60, 64, 67, 0.16), 0 4px 12px rgba(60, 64, 67, 0.1);
 
   --radius-xl: 1rem;
   --radius-2xl: 1.25rem;
@@ -48,49 +55,82 @@
     font-family: var(--font-sans);
     color: var(--color-ink);
     background-color: var(--color-canvas);
-    /* Soft green glow rising from the bottom, like new.fruitscope.com */
-    background-image: radial-gradient(
-      62% 48% at 50% 116%,
-      color-mix(in oklab, var(--color-brand-400) 26%, transparent),
-      transparent 70%
-    );
-    background-attachment: fixed;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
 
   ::selection {
-    background: color-mix(in oklab, var(--color-brand-400) 28%, transparent);
+    background: color-mix(in oklab, var(--color-brand-500) 22%, transparent);
     color: var(--color-ink);
   }
 
-  /* Slim, light scrollbars */
+  /* Slim, neutral scrollbars */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-line) transparent;
+    scrollbar-color: #d4d4d4 transparent;
   }
   *::-webkit-scrollbar {
     width: 9px;
     height: 9px;
   }
   *::-webkit-scrollbar-thumb {
-    background: #d4ddd6;
+    background: #d4d4d4;
     border-radius: 9999px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
   *::-webkit-scrollbar-thumb:hover {
-    background: #c1ccc3;
+    background: #bdbdbd;
     background-clip: content-box;
   }
 }
 
-/* Custom utility so `focus:` / `focus-within:` variants can attach to it. */
+/* Accent focus ring (so focus:/focus-within: variants can attach). */
 @utility focus-ring {
   outline: none;
-  box-shadow:
-    0 0 0 2px var(--color-canvas),
-    0 0 0 4px color-mix(in oklab, var(--color-brand-500) 45%, transparent);
+  border-color: color-mix(in oklab, var(--color-brand-500) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-brand-500) 18%, transparent);
+}
+
+/* The signature AI "glow" — a soft green radial field, gently breathing.
+   Used behind the login / empty states (matches the boot splash + AiAuthShell). */
+@utility glow {
+  background-image: radial-gradient(
+    ellipse 62% 48% at 50% 60%,
+    rgba(100, 200, 150, 0.34) 0%,
+    rgba(100, 200, 150, 0.2) 36%,
+    rgba(100, 200, 150, 0.07) 68%,
+    #ffffff 100%
+  );
+}
+
+.glow-breathe::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(
+    ellipse 62% 48% at 50% 60%,
+    rgba(100, 200, 150, 0.34) 0%,
+    rgba(100, 200, 150, 0.2) 36%,
+    rgba(100, 200, 150, 0.07) 68%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: glow-breathe 3.6s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+@keyframes glow-breathe {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
 }
 
 @keyframes blink {
@@ -107,5 +147,5 @@
 }
 
 .typing-dot {
-  animation: blink 1.3s infinite ease-in-out both;
+  animation: blink 1.4s infinite ease-in-out both;
 }
