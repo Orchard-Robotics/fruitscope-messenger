@@ -19,6 +19,7 @@ export function Sidebar({
   onNavigate?: () => void;
 }) {
   const me = useChatStore((s) => s.me);
+  const orchard = useChatStore((s) => s.orchard);
   const users = useChatStore((s) => s.users);
   const channels = useChatStore((s) => s.channels);
   const unread = useChatStore((s) => s.unread);
@@ -96,10 +97,12 @@ export function Sidebar({
       <header className="flex items-center gap-3 px-5 pb-3 pt-5">
         <Logo className="size-9" />
         <div className="min-w-0 leading-tight">
-          <h1 className="font-display text-lg font-bold text-ink">FruitScope</h1>
+          <h1 className="truncate font-display text-lg font-bold text-ink">
+            {orchard?.name ?? "FruitScope"}
+          </h1>
           <p className="flex items-center gap-1.5 text-xs text-ink-dim">
             <span className="size-1.5 rounded-full bg-brand-500" />
-            {onlineCount} online · Messenger
+            {onlineCount} online
           </p>
         </div>
       </header>

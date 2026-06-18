@@ -37,9 +37,9 @@ export function App() {
     })();
   }, []);
 
-  const handleLogin = async (username: string, displayName?: string) => {
+  const handleLogin = async (username: string, orchardId: string, displayName?: string) => {
     const store = useChatStore.getState();
-    const { token, user } = await rest.login(username, displayName);
+    const { token, user } = await rest.login(username, orchardId, displayName);
     tokenStore.set(token);
     store.signIn(token, user);
     connectSocket(token);

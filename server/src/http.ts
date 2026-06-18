@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import type { AuthedRequest } from "./auth";
 import { createSession, requireAuth } from "./auth";
-import { bootstrap, users } from "./store";
+import { bootstrap, orchards, users } from "./store";
 
 const loginSchema = z.object({
   username: z
@@ -13,6 +13,7 @@ const loginSchema = z.object({
     .max(24)
     .regex(/^[a-zA-Z0-9_.-]+$/, "Letters, numbers, dot, dash and underscore only"),
   displayName: z.string().trim().min(1).max(40).optional(),
+  orchardId: z.string().min(1),
 });
 
 /** Turn "willow_vale" into "Willow Vale" for a sensible default display name. */
@@ -26,23 +27,37 @@ function prettify(username: string): string {
 
 export const api: Router = Router();
 
+/** Public: the orchards a client can sign into (later filtered by OIDC). */
+api.get("/orchards", async (_req, res) => {
+  res.json(await orchards.all());
+});
+
 api.post("/auth/login", async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid username" });
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid login" });
     return;
   }
 
-  const { username } = parsed.data;
-  const displayName = parsed.data.displayName ?? prettify(username);
+  const { username, orchardId } = parsed.data;
+  const orchard = await orchards.byId(orchardId);
+  if (!orchard) {
+    res.status(404).json({ error: "Unknown orchard" });
+    return;
+  }
 
+  const displayName = parsed.data.displayName ?? prettify(username);
   const user = (await users.byUsername(username)) ?? (await users.create(username, displayName));
-  const token = await createSession(user.id);
-  res.json({ token, user });
+
+  // Membership grants access to this orchard's chat (a future OIDC layer decides this).
+  await orchards.ensureMembership(orchard.id, user.id);
+
+  const token = await createSession(user.id, orchard.id);
+  res.json({ token, user, orchard });
 });
 
 api.get("/me", requireAuth, async (req, res) => {
-  const user = await users.byId((req as AuthedRequest).userId);
+  const user = await users.byId((req as AuthedRequest).scope.userId);
   if (!user) {
     res.status(404).json({ error: "Not found" });
     return;
@@ -51,5 +66,6 @@ api.get("/me", requireAuth, async (req, res) => {
 });
 
 api.get("/bootstrap", requireAuth, async (req, res) => {
-  res.json(await bootstrap((req as AuthedRequest).userId));
+  const { userId, orchardId } = (req as AuthedRequest).scope;
+  res.json(await bootstrap(userId, orchardId));
 });

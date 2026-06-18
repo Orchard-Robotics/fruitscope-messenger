@@ -9,7 +9,7 @@ import type {
 } from "@shared/index";
 import { REACTION_EMOJI } from "@shared/index";
 import { resolveToken } from "./auth";
-import { canAccess, channels, messages, reads, users } from "./store";
+import { canAccess, channels, messages, orchards, reads, users } from "./store";
 
 type InterServerEvents = Record<string, never>;
 
@@ -26,13 +26,17 @@ type IOSocket = Socket<
   SocketData
 >;
 
-const userRoom = (id: ID): string => `user:${id}`;
-const chanRoom = (id: ID): string => `chan:${id}`;
+/* Rooms are namespaced by orchard so broadcasts never cross tenants. */
+const orchRoom = (orchardId: ID): string => `orch:${orchardId}`;
+const userRoom = (orchardId: ID, userId: ID): string => `u:${orchardId}:${userId}`;
+const chanRoom = (channelId: ID): string => `chan:${channelId}`;
 
 const TYPING_TTL_MS = 5_000;
 
-/** userId -> set of live socket ids (presence). */
-const liveSockets = new Map<ID, Set<string>>();
+/** `${orchardId}:${userId}` -> live socket ids (presence, per orchard). */
+const liveByOrchard = new Map<string, Set<string>>();
+/** userId -> total live socket count (across orchards), for global status. */
+const userSocketCount = new Map<ID, number>();
 /** channelId -> (userId -> auto-stop timer). */
 const typingByChannel = new Map<ID, Map<ID, ReturnType<typeof setTimeout>>>();
 
@@ -42,10 +46,7 @@ const sendSchema = z.object({
   channelId: z.string().min(1),
   content: z.string().trim().min(1).max(4000),
 });
-const reactSchema = z.object({
-  messageId: z.string().min(1),
-  emoji: z.enum(REACTION_EMOJI),
-});
+const reactSchema = z.object({ messageId: z.string().min(1), emoji: z.enum(REACTION_EMOJI) });
 const createSchema = z.object({
   name: z
     .string()
@@ -94,30 +95,41 @@ function startTyping(io: IOServer, channelId: ID, userId: ID): void {
 
 /* -------------------------------- presence --------------------------------- */
 
-async function onConnect(io: IOServer, socket: IOSocket, userId: ID): Promise<void> {
-  const sockets = liveSockets.get(userId) ?? new Set<string>();
+async function onConnect(io: IOServer, socket: IOSocket, userId: ID, orchardId: ID): Promise<void> {
+  const key = `${orchardId}:${userId}`;
+  const sockets = liveByOrchard.get(key) ?? new Set<string>();
   const wasOffline = sockets.size === 0;
   sockets.add(socket.id);
-  liveSockets.set(userId, sockets);
+  liveByOrchard.set(key, sockets);
+  userSocketCount.set(userId, (userSocketCount.get(userId) ?? 0) + 1);
 
-  socket.join(userRoom(userId));
-  for (const channel of await channels.visibleTo(userId)) socket.join(chanRoom(channel.id));
+  socket.join(orchRoom(orchardId));
+  socket.join(userRoom(orchardId, userId));
+  for (const channel of await channels.visibleTo(userId, orchardId)) socket.join(chanRoom(channel.id));
 
   if (wasOffline) {
     const me = await users.setStatus(userId, "online");
-    if (me) io.emit("user:upserted", me);
+    if (me) io.to(orchRoom(orchardId)).emit("user:upserted", me);
   }
 }
 
-function onDisconnect(io: IOServer, socket: IOSocket, userId: ID): void {
-  const sockets = liveSockets.get(userId);
+async function onDisconnect(io: IOServer, socket: IOSocket, userId: ID, orchardId: ID): Promise<void> {
+  const key = `${orchardId}:${userId}`;
+  const sockets = liveByOrchard.get(key);
   if (sockets) {
     sockets.delete(socket.id);
     if (sockets.size === 0) {
-      liveSockets.delete(userId);
-      void users.setStatus(userId, "offline");
-      io.emit("presence:update", { userId, status: "offline" });
+      liveByOrchard.delete(key);
+      io.to(orchRoom(orchardId)).emit("presence:update", { userId, status: "offline" });
     }
+  }
+
+  const remaining = (userSocketCount.get(userId) ?? 1) - 1;
+  if (remaining <= 0) {
+    userSocketCount.delete(userId);
+    await users.setStatus(userId, "offline");
+  } else {
+    userSocketCount.set(userId, remaining);
   }
 
   for (const [channelId, typers] of typingByChannel) {
@@ -132,12 +144,13 @@ export function attachSockets(io: IOServer): void {
     void (async () => {
       try {
         const token: unknown = socket.handshake.auth?.token;
-        const userId = typeof token === "string" ? await resolveToken(token) : undefined;
-        if (!userId) {
+        const scope = typeof token === "string" ? await resolveToken(token) : undefined;
+        if (!scope) {
           next(new Error("Unauthorized"));
           return;
         }
-        socket.data.userId = userId;
+        socket.data.userId = scope.userId;
+        socket.data.orchardId = scope.orchardId;
         next();
       } catch (err) {
         next(err instanceof Error ? err : new Error("Auth failed"));
@@ -151,15 +164,15 @@ export function attachSockets(io: IOServer): void {
 }
 
 async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
-  const userId = socket.data.userId;
-  await onConnect(io, socket, userId);
+  const { userId, orchardId } = socket.data;
+  await onConnect(io, socket, userId, orchardId);
 
   socket.on("message:send", async (payload, ack) => {
     const parsed = sendSchema.safeParse(payload);
     if (!parsed.success) return ack({ ok: false, error: "Invalid message" });
 
     const channel = await channels.byId(parsed.data.channelId);
-    if (!channel || !canAccess(channel, userId)) {
+    if (!channel || !canAccess(channel, userId, orchardId)) {
       return ack({ ok: false, error: "You can't post here" });
     }
 
@@ -175,7 +188,7 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
 
     const target = await messages.byId(parsed.data.messageId);
     const channel = target ? await channels.byId(target.channelId) : undefined;
-    if (!target || !channel || !canAccess(channel, userId)) {
+    if (!target || !channel || !canAccess(channel, userId, orchardId)) {
       return ack({ ok: false, error: "Message not found" });
     }
 
@@ -191,6 +204,7 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
 
     const { name, topic, isPrivate } = parsed.data;
     const channel = await channels.create({
+      orchardId,
       kind: "channel",
       name,
       ...(topic !== undefined ? { topic } : {}),
@@ -200,11 +214,11 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     });
 
     if (channel.isPrivate) {
-      void io.in(userRoom(userId)).socketsJoin(chanRoom(channel.id));
-      io.to(userRoom(userId)).emit("channel:created", channel);
+      void io.in(userRoom(orchardId, userId)).socketsJoin(chanRoom(channel.id));
+      io.to(userRoom(orchardId, userId)).emit("channel:created", channel);
     } else {
-      void io.socketsJoin(chanRoom(channel.id));
-      io.emit("channel:created", channel);
+      void io.in(orchRoom(orchardId)).socketsJoin(chanRoom(channel.id));
+      io.to(orchRoom(orchardId)).emit("channel:created", channel);
     }
     ack({ ok: true, data: channel });
   });
@@ -214,7 +228,7 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     if (!parsed.success) return ack({ ok: false, error: "Invalid channel" });
 
     const channel = await channels.byId(parsed.data.channelId);
-    if (!channel || !canAccess(channel, userId)) {
+    if (!channel || !canAccess(channel, userId, orchardId)) {
       return ack({ ok: false, error: "Channel not found" });
     }
 
@@ -230,12 +244,15 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
 
     const otherId = parsed.data.userId;
     if (otherId === userId) return ack({ ok: false, error: "You can't DM yourself" });
-    if (!(await users.byId(otherId))) return ack({ ok: false, error: "User not found" });
+    if (!(await orchards.isMember(orchardId, otherId))) {
+      return ack({ ok: false, error: "User is not in this orchard" });
+    }
 
-    const existing = await channels.findDm(userId, otherId);
+    const existing = await channels.findDm(orchardId, userId, otherId);
     if (existing) return ack({ ok: true, data: existing });
 
     const channel = await channels.create({
+      orchardId,
       kind: "dm",
       name: "",
       isPrivate: true,
@@ -244,8 +261,8 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     });
 
     for (const member of [userId, otherId]) {
-      void io.in(userRoom(member)).socketsJoin(chanRoom(channel.id));
-      io.to(userRoom(member)).emit("channel:created", channel);
+      void io.in(userRoom(orchardId, member)).socketsJoin(chanRoom(channel.id));
+      io.to(userRoom(orchardId, member)).emit("channel:created", channel);
     }
     ack({ ok: true, data: channel });
   });
@@ -255,7 +272,7 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     if (!parsed.success) return ack({ ok: false, error: "Invalid request" });
 
     const channel = await channels.byId(parsed.data.channelId);
-    if (!channel || !canAccess(channel, userId)) {
+    if (!channel || !canAccess(channel, userId, orchardId)) {
       return ack({ ok: false, error: "Channel not found" });
     }
     const history = await messages.forChannel(channel.id, {
@@ -280,5 +297,5 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     if (parsed.success) void reads.set(userId, parsed.data.channelId, Date.now());
   });
 
-  socket.on("disconnect", () => onDisconnect(io, socket, userId));
+  socket.on("disconnect", () => void onDisconnect(io, socket, userId, orchardId));
 }

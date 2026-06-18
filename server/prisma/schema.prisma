@@ -1,4 +1,7 @@
-// Verdant chat schema.
+// FruitScope Messenger schema.
+//
+// Multi-tenant: every Channel/DM/Message belongs to an Orchard, so each orchard
+// has a fully isolated chat environment (like a Slack workspace).
 //
 // PostgreSQL everywhere: a local Docker Postgres for development
 // (see docker-compose.yml) and GCP Cloud SQL in production. DATABASE_URL
@@ -13,6 +16,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Orchard {
+  id        String   @id
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+
+  members  OrchardMembership[]
+  channels Channel[]
+  sessions Session[]
+}
+
+model OrchardMembership {
+  orchardId String
+  userId    String
+  role      String   @default("member")
+  joinedAt  DateTime @default(now())
+
+  orchard Orchard @relation(fields: [orchardId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([orchardId, userId])
+}
+
 model User {
   id          String   @id
   username    String   @unique
@@ -21,16 +47,18 @@ model User {
   status      String   @default("offline")
   createdAt   DateTime @default(now())
 
+  orchards        OrchardMembership[]
   memberships     ChannelMember[]
   messages        Message[]
   reactions       Reaction[]
   sessions        Session[]
   reads           Read[]
-  createdChannels Channel[]       @relation("ChannelCreator")
+  createdChannels Channel[]           @relation("ChannelCreator")
 }
 
 model Channel {
   id          String   @id
+  orchardId   String
   kind        String // "channel" | "dm"
   name        String
   topic       String   @default("")
@@ -38,10 +66,13 @@ model Channel {
   createdById String
   createdAt   DateTime @default(now())
 
+  orchard   Orchard         @relation(fields: [orchardId], references: [id], onDelete: Cascade)
   createdBy User            @relation("ChannelCreator", fields: [createdById], references: [id])
   members   ChannelMember[]
   messages  Message[]
   reads     Read[]
+
+  @@index([orchardId])
 }
 
 model ChannelMember {
@@ -85,9 +116,11 @@ model Reaction {
 model Session {
   token     String   @id
   userId    String
+  orchardId String
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orchard Orchard @relation(fields: [orchardId], references: [id], onDelete: Cascade)
 }
 
 model Read {

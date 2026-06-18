@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { Bootstrap, Channel, ID, Message, User, UserStatus } from "@shared/index";
+import type { Bootstrap, Channel, ID, Message, Orchard, User, UserStatus } from "@shared/index";
 
 export type SessionStatus = "loading" | "anon" | "ready";
 
@@ -8,6 +8,8 @@ interface ChatState {
   /* session */
   token: string | null;
   me: User | null;
+  /** The orchard this session is scoped to. */
+  orchard: Orchard | null;
   session: SessionStatus;
   connected: boolean;
 
@@ -58,6 +60,7 @@ function pickInitialChannel(channels: Channel[]): ID | null {
 export const useChatStore = create<ChatState>((set, get) => ({
   token: null,
   me: null,
+  orchard: null,
   session: "loading",
   connected: false,
 
@@ -78,6 +81,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       token: null,
       me: null,
+      orchard: null,
       session: "anon",
       connected: false,
       users: {},
@@ -101,6 +105,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       users[me.id] = me;
       return {
         me,
+        orchard: data.orchard,
         users,
         channels: toRecord(data.channels),
         messages: data.messages,

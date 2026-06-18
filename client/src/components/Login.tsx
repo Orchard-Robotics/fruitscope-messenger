@@ -1,29 +1,45 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import type { Orchard } from "@shared/index";
+import { rest } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { Logo } from "./Logo";
 
-const SUGGESTIONS = ["willow", "fern", "sol", "robin", "moss"];
+const SUGGESTIONS = ["willow", "fern", "sol", "robin", "moss", "dale"];
 
 export function Login({
   onLogin,
 }: {
-  onLogin: (username: string, displayName?: string) => Promise<void>;
+  onLogin: (username: string, orchardId: string, displayName?: string) => Promise<void>;
 }) {
+  const [orchards, setOrchards] = useState<Orchard[]>([]);
+  const [orchardId, setOrchardId] = useState("");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const list = await rest.orchards();
+        setOrchards(list);
+        if (list[0]) setOrchardId(list[0].id);
+      } catch {
+        setError("Couldn't load orchards");
+      }
+    })();
+  }, []);
+
   const submit = async (name: string, display?: string) => {
     const trimmed = name.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || !orchardId || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await onLogin(trimmed, display?.trim() || undefined);
+      await onLogin(trimmed, orchardId, display?.trim() || undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not sign in");
       setBusy(false);
@@ -55,9 +71,23 @@ export function Login({
           }}
           className="space-y-4"
         >
+          <Field label="Orchard">
+            <select
+              value={orchardId}
+              onChange={(e) => setOrchardId(e.target.value)}
+              className="w-full appearance-none rounded-xl border border-line bg-surface px-4 py-3 text-ink focus:focus-ring"
+            >
+              {orchards.length === 0 && <option value="">Loading…</option>}
+              {orchards.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name} ({o.code})
+                </option>
+              ))}
+            </select>
+          </Field>
+
           <Field label="Username">
             <input
-              autoFocus
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="e.g. willow"
@@ -81,7 +111,7 @@ export function Login({
 
           <button
             type="submit"
-            disabled={busy || !username.trim()}
+            disabled={busy || !username.trim() || !orchardId}
             className="group flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-3 font-semibold text-white shadow-sm shadow-brand-700/20 transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? "Signing in…" : "Sign in"}
@@ -98,7 +128,7 @@ export function Login({
               <button
                 key={name}
                 type="button"
-                disabled={busy}
+                disabled={busy || !orchardId}
                 onClick={() => {
                   setUsername(name);
                   void submit(name);
