@@ -17,11 +17,15 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    // esbuild minification (Vite default) — explicit, plus no prod sourcemaps.
-    minify: "esbuild",
+    // Terser squeezes a bit smaller than esbuild; multiple passes + dropping
+    // console/debugger for the smallest possible production bundle.
+    minify: "terser",
     sourcemap: false,
+    terserOptions: {
+      compress: { passes: 3, drop_console: true, drop_debugger: true },
+      format: { comments: false },
+    },
   },
-  // Strip console/debugger from the production bundle only.
   esbuild: mode === "production" ? { drop: ["console", "debugger"] } : {},
   server: {
     port: 5173,

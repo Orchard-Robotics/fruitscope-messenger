@@ -1,14 +1,34 @@
-import { format, isToday, isYesterday } from "date-fns";
+// Date formatting via the built-in Intl API — zero bundle cost (no date-fns).
 
-export const timeOfDay = (ts: number): string => format(ts, "h:mm a");
+const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" });
+const fullFmt = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+/** Days between two timestamps by *local* calendar date (DST-safe). */
+function calendarDayDiff(from: number, to: number): number {
+  const a = new Date(from);
+  const b = new Date(to);
+  const midnightA = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
+  const midnightB = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+  return Math.round((midnightB - midnightA) / 86400000);
+}
+
+export const timeOfDay = (ts: number): string => timeFmt.format(ts);
 
 export const dayLabel = (ts: number): string => {
-  if (isToday(ts)) return "Today";
-  if (isYesterday(ts)) return "Yesterday";
-  return format(ts, "EEEE, MMMM d");
+  const diff = calendarDayDiff(ts, Date.now());
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  return dayFmt.format(ts);
 };
 
-export const fullStamp = (ts: number): string => format(ts, "EEE, MMM d 'at' h:mm a");
+export const fullStamp = (ts: number): string => fullFmt.format(ts);
 
 /** True when two timestamps fall on different calendar days. */
 export const isNewDay = (a: number, b: number): boolean =>

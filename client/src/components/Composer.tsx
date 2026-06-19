@@ -1,4 +1,3 @@
-import { AnimatePresence, motion } from "framer-motion";
 import { Send, Smile } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -71,34 +70,26 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
           >
             <Smile className="size-5" />
           </button>
-          <AnimatePresence>
-            {emojiOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setEmojiOpen(false)} />
-                <motion.div
-                  initial={{ opacity: 0, y: 6, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.95 }}
-                  transition={{ duration: 0.14 }}
-                  className="absolute bottom-12 left-0 z-20 flex gap-1 rounded-xl border border-line bg-white p-1.5 shadow-lg"
-                >
-                  {REACTION_EMOJI.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => {
-                        setText((t) => t + emoji);
-                        setEmojiOpen(false);
-                        textareaRef.current?.focus();
-                      }}
-                      className="grid size-8 place-items-center rounded-lg text-lg transition hover:scale-110 hover:bg-surface-2"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
+          {emojiOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setEmojiOpen(false)} />
+              <div className="anim-pop-in absolute bottom-12 left-0 z-20 flex gap-1 rounded-xl border border-line bg-white p-1.5 shadow-lg">
+                {REACTION_EMOJI.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      setText((t) => t + emoji);
+                      setEmojiOpen(false);
+                      textareaRef.current?.focus();
+                    }}
+                    className="grid size-8 place-items-center rounded-lg text-lg transition hover:scale-110 hover:bg-surface-2"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         <textarea

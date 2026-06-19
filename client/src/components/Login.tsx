@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -48,12 +47,7 @@ export function Login({
 
   return (
     <div className="glow glow-breathe relative grid min-h-dvh place-items-center overflow-hidden px-6">
-      <motion.div
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="relative z-10 w-full max-w-md rounded-3xl border border-line bg-white p-8 shadow-floating"
-      >
+      <div className="anim-card-in relative z-10 w-full max-w-md rounded-3xl border border-line bg-white p-8 shadow-floating">
         <div className="mb-7 flex items-center gap-3">
           <Logo className="size-12" />
           <div>
@@ -140,7 +134,7 @@ export function Login({
             ))}
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import { AnimatePresence, motion } from "framer-motion";
 import { SmilePlus } from "lucide-react";
 import { useState } from "react";
 
@@ -27,12 +26,9 @@ export function MessageItem({ message, author, showHeader, meId }: MessageItemPr
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18 }}
+    <div
       className={cn(
-        "group relative flex gap-3 px-4 hover:bg-surface",
+        "anim-rise-in group relative flex gap-3 px-4 hover:bg-surface",
         showHeader ? "mt-3 pt-1" : "py-0.5",
       )}
     >
@@ -93,32 +89,24 @@ export function MessageItem({ message, author, showHeader, meId }: MessageItemPr
             <SmilePlus className="size-4" />
           </button>
 
-          <AnimatePresence>
-            {picking && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setPicking(false)} />
-                <motion.div
-                  initial={{ opacity: 0, y: 4, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                  transition={{ duration: 0.14 }}
-                  className="absolute right-0 top-9 z-20 flex gap-1 rounded-xl border border-line bg-white p-1.5 shadow-lg"
-                >
-                  {REACTION_EMOJI.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => react(emoji)}
-                      className="grid size-8 place-items-center rounded-lg text-lg transition hover:scale-110 hover:bg-surface-2"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
+          {picking && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setPicking(false)} />
+              <div className="anim-pop-in absolute right-0 top-9 z-20 flex gap-1 rounded-xl border border-line bg-white p-1.5 shadow-lg">
+                {REACTION_EMOJI.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => react(emoji)}
+                    className="grid size-8 place-items-center rounded-lg text-lg transition hover:scale-110 hover:bg-surface-2"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
