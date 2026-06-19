@@ -61,6 +61,12 @@ jobs:
     name: Terraform
     needs: build
     runs-on: ubuntu-latest
+    # Serialize ALL Terraform invocations (PR plans + main applies) against the
+    # shared remote state — a fixed group across refs so they queue instead of
+    # racing the state lock. Never cancel an in-flight apply.
+    concurrency:
+      group: verdant-terraform-state
+      cancel-in-progress: false
     defaults:
       run:
         working-directory: terraform
@@ -89,8 +95,8 @@ jobs:
 
       - name: Terraform plan (PRs)
         if: github.event_name == 'pull_request'
-        run: terraform plan -input=false -var="container_image=${{ needs.build.outputs.image }}"
+        run: terraform plan -input=false -lock-timeout=180s -var="container_image=${{ needs.build.outputs.image }}"
 
       - name: Terraform apply (deploy on merge to main)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: terraform apply -auto-approve -input=false -var="container_image=${{ needs.build.outputs.image }}"
+        run: terraform apply -auto-approve -input=false -lock-timeout=180s -var="container_image=${{ needs.build.outputs.image }}"
