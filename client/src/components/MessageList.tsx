@@ -1,4 +1,5 @@
-import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
 import type { ID, Message } from "@shared/index";
 import { dayLabel, isNewDay } from "@/lib/format";
@@ -10,109 +11,140 @@ import { TypingIndicator } from "./TypingIndicator";
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
 const EMPTY: Message[] = [];
+/** Large base so prepended items get a non-negative virtual index. */
+const START_INDEX = 1_000_000;
 
-type Row =
-  | { kind: "day"; key: string; ts: number }
-  | { kind: "message"; key: string; message: Message; showHeader: boolean };
-
+/**
+ * Virtualized message list — only on-screen rows live in the DOM. Each channel's
+ * first page loads lazily on open; older pages stream in as you scroll up, with
+ * the scroll position held stable via Virtuoso's firstItemIndex.
+ */
 export function MessageList({ channelId }: { channelId: ID }) {
   const messages = useChatStore((s) => s.messages[channelId] ?? EMPTY);
+  const hydrated = useChatStore((s) => s.hydrated[channelId] ?? false);
+  const historyComplete = useChatStore((s) => s.historyComplete[channelId] ?? false);
   const users = useChatStore((s) => s.users);
   const meId = useChatStore((s) => s.me?.id ?? "");
-  const typing = useChatStore((s) => s.typing[channelId]);
-  const historyComplete = useChatStore((s) => s.historyComplete[channelId] ?? false);
-  const prependHistory = useChatStore((s) => s.prependHistory);
+  const setInitialPage = useChatStore((s) => s.setInitialPage);
+  const prependPage = useChatStore((s) => s.prependPage);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtuoso = useRef<VirtuosoHandle>(null);
+  const [firstItemIndex, setFirstItemIndex] = useState(START_INDEX);
   const atBottom = useRef(true);
-  const restoreFromBottom = useRef<number | null>(null);
-  const loading = useRef(false);
+  const loadingOlder = useRef(false);
+  const prevFirstId = useRef<string | undefined>(undefined);
+  const lastId = useRef<string | undefined>(undefined);
+  const seededLast = useRef(false);
 
-  const rows = useMemo<Row[]>(() => {
-    const out: Row[] = [];
-    let prev: Message | undefined;
-    for (const message of messages) {
-      if (!prev || isNewDay(prev.createdAt, message.createdAt)) {
-        out.push({ kind: "day", key: `day-${message.id}`, ts: message.createdAt });
+  // When *I* send a message while scrolled up, jump to the bottom to show it
+  // (followOutput only sticks when already at the bottom).
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    if (!seededLast.current) {
+      seededLast.current = true;
+      lastId.current = last.id;
+      return;
+    }
+    // A prepend changes messages[0], never the last id — so a changed last id
+    // is always a new message at the bottom.
+    if (last.id !== lastId.current) {
+      lastId.current = last.id;
+      if (last.authorId === meId) {
+        virtuoso.current?.scrollToIndex({ index: "LAST", behavior: "smooth", align: "end" });
       }
-      const grouped =
-        prev !== undefined &&
-        prev.authorId === message.authorId &&
-        message.createdAt - prev.createdAt < GROUP_GAP_MS &&
-        !isNewDay(prev.createdAt, message.createdAt);
-      out.push({ kind: "message", key: message.id, message, showHeader: !grouped });
-      prev = message;
     }
-    return out;
-  }, [messages]);
+  }, [messages, meId]);
 
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-    atBottom.current = true;
-  }, [channelId]);
+  // Lazy first-page load when a channel is opened for the first time.
+  useEffect(() => {
+    if (hydrated) return;
+    let cancelled = false;
+    void (async () => {
+      const res = await chat.history(channelId);
+      if (!cancelled && res.ok) setInitialPage(channelId, res.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [channelId, hydrated, setInitialPage]);
 
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    if (restoreFromBottom.current !== null) {
-      el.scrollTop = el.scrollHeight - restoreFromBottom.current;
-      restoreFromBottom.current = null;
-    } else if (atBottom.current) {
-      el.scrollTop = el.scrollHeight;
+  // Keep the viewport anchored when older messages are prepended: shift the
+  // virtual index by however many rows appeared before the previous first row.
+  useEffect(() => {
+    const oldFirst = prevFirstId.current;
+    if (oldFirst) {
+      const idx = messages.findIndex((m) => m.id === oldFirst);
+      if (idx > 0) setFirstItemIndex((v) => v - idx);
     }
+    prevFirstId.current = messages[0]?.id;
   }, [messages]);
-
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (el && atBottom.current) el.scrollTop = el.scrollHeight;
-  }, [typing]);
 
   const loadOlder = useCallback(async () => {
-    const el = scrollRef.current;
+    if (loadingOlder.current || historyComplete) return;
     const oldest = messages[0];
-    if (!el || loading.current || historyComplete || !oldest) return;
-    loading.current = true;
-    const res = await chat.history(channelId, oldest.createdAt);
-    if (res.ok) {
-      restoreFromBottom.current = el.scrollHeight - el.scrollTop;
-      prependHistory(channelId, res.data);
-    }
-    loading.current = false;
-  }, [channelId, messages, historyComplete, prependHistory]);
+    if (!oldest) return;
+    loadingOlder.current = true;
+    const res = await chat.history(channelId, { createdAt: oldest.createdAt, id: oldest.id });
+    if (res.ok) prependPage(channelId, res.data);
+    loadingOlder.current = false;
+  }, [channelId, messages, historyComplete, prependPage]);
 
-  const onScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (el.scrollTop < 60) void loadOlder();
-  };
+  if (!hydrated) {
+    return <div className="flex flex-1 items-center justify-center text-sm text-ink-faint">Loading…</div>;
+  }
+
+  if (messages.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col justify-end">
+        <Intro hasMessages={false} />
+      </div>
+    );
+  }
 
   return (
-    <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
-      <div className="flex min-h-full flex-col justify-end py-3">
-        {(historyComplete || messages.length === 0) && <Intro hasMessages={messages.length > 0} />}
-
-        {rows.map((row) =>
-          row.kind === "day" ? (
-            <DayDivider key={row.key} ts={row.ts} />
-          ) : (
+    <Virtuoso
+      ref={virtuoso}
+      className="flex-1"
+      data={messages}
+      firstItemIndex={firstItemIndex}
+      initialTopMostItemIndex={messages.length - 1}
+      startReached={() => void loadOlder()}
+      followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
+      atBottomStateChange={(b) => {
+        atBottom.current = b;
+      }}
+      increaseViewportBy={{ top: 600, bottom: 200 }}
+      components={{
+        Header: () => (historyComplete ? <Intro hasMessages /> : <LoadingOlder />),
+        Footer: () => (
+          <div className="mt-1 pb-2">
+            <TypingIndicator channelId={channelId} />
+          </div>
+        ),
+      }}
+      itemContent={(index, message) => {
+        const arrIndex = index - firstItemIndex;
+        const prev = arrIndex > 0 ? messages[arrIndex - 1] : undefined;
+        const showDivider = !prev || isNewDay(prev.createdAt, message.createdAt);
+        const grouped =
+          prev !== undefined &&
+          prev.authorId === message.authorId &&
+          message.createdAt - prev.createdAt < GROUP_GAP_MS &&
+          !showDivider;
+        return (
+          <>
+            {showDivider && <DayDivider ts={message.createdAt} />}
             <MessageItem
-              key={row.key}
-              message={row.message}
-              author={users[row.message.authorId]}
-              showHeader={row.showHeader}
+              message={message}
+              author={users[message.authorId]}
+              showHeader={!grouped}
               meId={meId}
             />
-          ),
-        )}
-
-        <div className="mt-1">
-          <TypingIndicator channelId={channelId} />
-        </div>
-      </div>
-    </div>
+          </>
+        );
+      }}
+    />
   );
 }
 
@@ -126,6 +158,10 @@ function DayDivider({ ts }: { ts: number }) {
       <span className="h-px flex-1 bg-line" />
     </div>
   );
+}
+
+function LoadingOlder() {
+  return <div className="py-3 text-center text-xs text-ink-faint">Loading earlier messages…</div>;
 }
 
 function Intro({ hasMessages }: { hasMessages: boolean }) {

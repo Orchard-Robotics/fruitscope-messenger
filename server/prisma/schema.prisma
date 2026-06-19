@@ -98,7 +98,7 @@ model Message {
   author    User       @relation(fields: [authorId], references: [id])
   reactions Reaction[]
 
-  @@index([channelId, createdAt])
+  @@index([channelId, createdAt, id])
 }
 
 model Reaction {

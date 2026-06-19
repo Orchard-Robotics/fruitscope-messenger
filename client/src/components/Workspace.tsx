@@ -41,7 +41,7 @@ export function Workspace() {
         {channel && activeChannelId ? (
           <>
             <ChannelHeader onOpenNav={() => setNavOpen(true)} />
-            <MessageList channelId={activeChannelId} />
+            <MessageList key={activeChannelId} channelId={activeChannelId} />
             <Composer channelId={activeChannelId} placeholder={placeholder} />
           </>
         ) : (

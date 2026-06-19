@@ -58,8 +58,13 @@ const createSchema = z.object({
   isPrivate: z.boolean().optional(),
 });
 const channelRef = z.object({ channelId: z.string().min(1) });
-const historySchema = z.object({ channelId: z.string().min(1), before: z.number().positive() });
+const historySchema = z.object({
+  channelId: z.string().min(1),
+  before: z.object({ createdAt: z.number().positive(), id: z.string().min(1) }).optional(),
+});
 const dmSchema = z.object({ userId: z.string().min(1) });
+
+const HISTORY_PAGE = 30;
 
 /* -------------------------------- typing ----------------------------------- */
 
@@ -275,11 +280,11 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     if (!channel || !canAccess(channel, userId, orchardId)) {
       return ack({ ok: false, error: "Channel not found" });
     }
-    const history = await messages.forChannel(channel.id, {
-      before: parsed.data.before,
-      limit: 30,
+    const page = await messages.page(channel.id, {
+      ...(parsed.data.before ? { before: parsed.data.before } : {}),
+      limit: HISTORY_PAGE,
     });
-    ack({ ok: true, data: history });
+    ack({ ok: true, data: page });
   });
 
   socket.on("typing:start", (payload) => {

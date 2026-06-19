@@ -63,7 +63,12 @@ export interface Message {
   reactions: Reaction[];
 }
 
-/** Everything the client needs to render one orchard's workspace on connect. */
+/**
+ * Everything the client needs to render one orchard's workspace on connect.
+ * Messages are intentionally NOT included — they are loaded lazily per channel
+ * (most recent page on open, older pages on scroll) so the initial payload is
+ * O(1) in channel count, not O(channels × messages).
+ */
 export interface Bootstrap {
   me: User;
   /** The active orchard this session is scoped to. */
@@ -71,8 +76,22 @@ export interface Bootstrap {
   /** Members of this orchard. */
   users: User[];
   channels: Channel[];
-  /** Most recent messages per channel, oldest-first. */
-  messages: Record<ID, Message[]>;
+}
+
+/**
+ * Keyset-pagination cursor: a stable total order over (createdAt, id). Paging
+ * by this (rather than a bare timestamp) avoids dropping/duplicating messages
+ * that share a millisecond at a page boundary.
+ */
+export interface MessageCursor {
+  createdAt: Timestamp;
+  id: ID;
+}
+
+/** A page of messages (oldest-first) plus whether older messages remain. */
+export interface MessagePage {
+  messages: Message[];
+  hasMore: boolean;
 }
 
 /** Discriminated result returned through Socket.IO acknowledgements. */
