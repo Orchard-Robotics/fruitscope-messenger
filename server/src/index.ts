@@ -1,6 +1,4 @@
 import { createServer } from "node:http";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import compression from "compression";
 import cors from "cors";
@@ -22,7 +20,7 @@ await seed();
 
 const app = express();
 app.set("trust proxy", true); // behind the GCP load balancer
-app.use(compression()); // gzip static assets + API responses on the wire
+app.use(compression()); // gzip API responses (the static SPA is served by GCS+CDN)
 app.use(cors());
 app.use(express.json());
 app.use("/api", api);
@@ -30,18 +28,9 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-// In production we serve the built client from this same origin — one domain,
-// no CORS, WebSockets share the origin.
-if (process.env.NODE_ENV === "production") {
-  const dirname = path.dirname(fileURLToPath(import.meta.url));
-  const clientDist = process.env.CLIENT_DIST ?? path.resolve(dirname, "../../client/dist");
-  app.use(express.static(clientDist));
-  // SPA fallback — anything that isn't the API or the socket endpoint gets index.html.
-  app.get("*", (req, res, next) => {
-    if (req.path.startsWith("/api") || req.path.startsWith("/socket.io")) return next();
-    res.sendFile(path.join(clientDist, "index.html"));
-  });
-}
+// The static SPA is served separately from GCS + Cloud CDN; this service is
+// API + WebSockets only. The load balancer routes /api, /socket.io and /health
+// here and everything else to the bucket.
 
 const httpServer = createServer(app);
 const io = new Server<

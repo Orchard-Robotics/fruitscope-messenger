@@ -27,8 +27,26 @@ resource "google_compute_backend_service" "default" {
 }
 
 resource "google_compute_url_map" "default" {
-  name            = "verdant-urlmap"
-  default_service = google_compute_backend_service.default.id
+  name = "verdant-urlmap"
+
+  # Default: the static SPA on GCS + Cloud CDN.
+  default_service = google_compute_backend_bucket.web.id
+
+  host_rule {
+    hosts        = ["*"]
+    path_matcher = "main"
+  }
+
+  path_matcher {
+    name            = "main"
+    default_service = google_compute_backend_bucket.web.id
+
+    # Dynamic paths → Cloud Run (REST + WebSockets).
+    path_rule {
+      paths   = ["/api", "/api/*", "/socket.io", "/socket.io/*", "/health"]
+      service = google_compute_backend_service.default.id
+    }
+  }
 }
 
 resource "google_compute_managed_ssl_certificate" "default" {
