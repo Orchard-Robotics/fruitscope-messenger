@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import compression from "compression";
 import cors from "cors";
 import express from "express";
 import { Server } from "socket.io";
@@ -21,6 +22,7 @@ await seed();
 
 const app = express();
 app.set("trust proxy", true); // behind the GCP load balancer
+app.use(compression()); // gzip static assets + API responses on the wire
 app.use(cors());
 app.use(express.json());
 app.use("/api", api);
