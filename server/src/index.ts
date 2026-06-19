@@ -1,6 +1,4 @@
 import { createServer } from "node:http";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import cors from "cors";
 import express from "express";
@@ -28,18 +26,9 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-// In production we serve the built client from this same origin — one domain,
-// no CORS, WebSockets share the origin.
-if (process.env.NODE_ENV === "production") {
-  const dirname = path.dirname(fileURLToPath(import.meta.url));
-  const clientDist = process.env.CLIENT_DIST ?? path.resolve(dirname, "../../client/dist");
-  app.use(express.static(clientDist));
-  // SPA fallback — anything that isn't the API or the socket endpoint gets index.html.
-  app.get("*", (req, res, next) => {
-    if (req.path.startsWith("/api") || req.path.startsWith("/socket.io")) return next();
-    res.sendFile(path.join(clientDist, "index.html"));
-  });
-}
+// The static SPA is served separately from GCS + Cloud CDN; this service is
+// API + WebSockets only. The load balancer routes /api, /socket.io and /health
+// here and everything else to the bucket.
 
 const httpServer = createServer(app);
 const io = new Server<

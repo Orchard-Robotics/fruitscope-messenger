@@ -19,8 +19,50 @@ concurrency:
 
 env:
   IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/verdant/verdant
+  WEB_BUCKET: ${{ vars.GCP_PROJECT_ID }}-verdant-web
 
 jobs:
+  # Build the static SPA and publish it to the GCS bucket behind Cloud CDN.
+  # Only runs on deploy (push to main); PRs just validate via the build below.
+  frontend:
+    name: Build & publish frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm --workspace client run build
+
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Publish to GCS (assets immutable, index.html last + no-store)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          # 1) Hashed assets first — immutable, cache forever. rsync (no --delete-unmatched
+          #    yet) so old assets linger for in-flight clients during the swap.
+          gcloud storage rsync -r -x '^index\.html$' client/dist "gs://${WEB_BUCKET}" \
+            --cache-control="public, max-age=31536000, immutable"
+          # 2) index.html last, never cached → atomically points at the new assets.
+          gcloud storage cp client/dist/index.html "gs://${WEB_BUCKET}/index.html" \
+            --cache-control="no-store, max-age=0"
+          # 3) Now prune assets no client could still need.
+          gcloud storage rsync -r -d -x '^index\.html$' client/dist "gs://${WEB_BUCKET}" \
+            --cache-control="public, max-age=31536000, immutable"
+
   build:
     name: Build & push image
     runs-on: ubuntu-latest
@@ -59,7 +101,7 @@ jobs:
 
   terraform:
     name: Terraform
-    needs: build
+    needs: [frontend, build]
     runs-on: ubuntu-latest
     defaults:
       run:
