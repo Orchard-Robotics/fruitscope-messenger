@@ -5,6 +5,8 @@ import type {
   ClientToServerEvents,
   ID,
   Message,
+  MessageCursor,
+  MessagePage,
   Result,
   ServerToClientEvents,
 } from "@shared/index";
@@ -59,7 +61,15 @@ export function disconnectSocket(): void {
 async function resync(): Promise<void> {
   if (!sessionToken) return;
   try {
-    useChatStore.getState().loadBootstrap(await rest.bootstrap(sessionToken));
+    const store = useChatStore.getState();
+    store.loadBootstrap(await rest.bootstrap(sessionToken));
+    // Refresh the open channel's recent page so we catch anything missed while
+    // disconnected (other channels re-hydrate lazily when next opened).
+    const active = store.activeChannelId;
+    if (active) {
+      const res = await chat.history(active);
+      if (res.ok) useChatStore.getState().setInitialPage(active, res.data);
+    }
   } catch {
     /* best-effort; the next event or reconnect will reconcile */
   }
@@ -109,8 +119,10 @@ export const chat = {
   openDm: (userId: ID): Promise<Result<Channel>> =>
     withAck((cb) => getSocket().emit("dm:open", { userId }, cb)),
 
-  history: (channelId: ID, before: number): Promise<Result<Message[]>> =>
-    withAck((cb) => getSocket().emit("channel:history", { channelId, before }, cb)),
+  history: (channelId: ID, before?: MessageCursor): Promise<Result<MessagePage>> =>
+    withAck((cb) =>
+      getSocket().emit("channel:history", { channelId, ...(before ? { before } : {}) }, cb),
+    ),
 
   typingStart: (channelId: ID): void => {
     getSocket().emit("typing:start", { channelId });

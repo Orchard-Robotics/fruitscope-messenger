@@ -1,4 +1,13 @@
-import type { Channel, ID, Message, Result, User, UserStatus } from "./types";
+import type {
+  Channel,
+  ID,
+  Message,
+  MessageCursor,
+  MessagePage,
+  Result,
+  User,
+  UserStatus,
+} from "./types";
 
 /**
  * Strongly-typed Socket.IO event maps. Both ends import these so the wire
@@ -32,9 +41,11 @@ export interface ClientToServerEvents {
     payload: { channelId: ID },
     ack: (res: Result<Channel>) => void,
   ) => void;
+  // Loads one page of a channel's messages. Omit `before` for the most recent
+  // page (initial open); pass the oldest loaded cursor to page backwards.
   "channel:history": (
-    payload: { channelId: ID; before: number },
-    ack: (res: Result<Message[]>) => void,
+    payload: { channelId: ID; before?: MessageCursor },
+    ack: (res: Result<MessagePage>) => void,
   ) => void;
   "dm:open": (payload: { userId: ID }, ack: (res: Result<Channel>) => void) => void;
   "typing:start": (payload: { channelId: ID }) => void;

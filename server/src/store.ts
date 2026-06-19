@@ -8,6 +8,8 @@ import type {
   ChannelKind,
   ID,
   Message,
+  MessageCursor,
+  MessagePage,
   Orchard,
   Reaction,
   User,
@@ -238,21 +240,36 @@ export const messages = {
     return row ? mapMessage(row) : undefined;
   },
 
-  /** Returns up to `limit` messages (optionally before a cursor), oldest-first. */
-  forChannel: async (
+  /**
+   * One page of a channel's messages, oldest-first, plus whether older messages
+   * remain. Keyset pagination over (createdAt, id) — an index range-scan that
+   * costs O(limit) regardless of channel size. Omit `before` for the newest page.
+   */
+  page: async (
     channelId: ID,
-    opts: { before?: number; limit: number },
-  ): Promise<Message[]> => {
+    opts: { before?: MessageCursor; limit: number },
+  ): Promise<MessagePage> => {
+    const before = opts.before;
+    const cursor: Prisma.MessageWhereInput = before
+      ? {
+          OR: [
+            { createdAt: { lt: new Date(before.createdAt) } },
+            { createdAt: new Date(before.createdAt), id: { lt: before.id } },
+          ],
+        }
+      : {};
+
+    // Fetch one extra row to detect whether an older page exists.
     const rows = await prisma.message.findMany({
-      where: {
-        channelId,
-        ...(opts.before !== undefined ? { createdAt: { lt: new Date(opts.before) } } : {}),
-      },
+      where: { channelId, ...cursor },
       include: messageInclude,
-      orderBy: { createdAt: "desc" },
-      take: opts.limit,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: opts.limit + 1,
     });
-    return rows.reverse().map(mapMessage);
+
+    const hasMore = rows.length > opts.limit;
+    const pageRows = hasMore ? rows.slice(0, opts.limit) : rows;
+    return { messages: pageRows.reverse().map(mapMessage), hasMore };
   },
 
   create: async (channelId: ID, authorId: ID, content: string): Promise<Message> => {
@@ -302,16 +319,12 @@ export async function bootstrap(userId: ID, orchardId: ID): Promise<Bootstrap> {
   if (!me) throw new Error(`Unknown user ${userId}`);
   if (!orchard) throw new Error(`Unknown orchard ${orchardId}`);
 
+  // No messages here — the client loads each channel's first page lazily on open
+  // (and older pages on scroll), so connect stays O(1) in channel count.
   const [members, visible] = await Promise.all([
     orchards.members(orchardId),
     channels.visibleTo(userId, orchardId),
   ]);
 
-  const entries = await Promise.all(
-    visible.map(
-      async (channel) => [channel.id, await messages.forChannel(channel.id, { limit: 50 })] as const,
-    ),
-  );
-
-  return { me, orchard, users: members, channels: visible, messages: Object.fromEntries(entries) };
+  return { me, orchard, users: members, channels: visible };
 }
