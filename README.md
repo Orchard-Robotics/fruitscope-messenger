@@ -17,7 +17,7 @@ responsive down to mobile.
 - **Presence** — live online/away/offline dots and an online count
 - **Typing indicators**, **emoji reactions**, **unread badges**, message grouping & day dividers
 - **History pagination** — older messages load as you scroll up
-- Passwordless username login (local demo), seeded with a lively little workspace
+- **Sign in with FruitScope (OIDC)** — per-orchard workspaces; super admins can switch between orchards
 
 ## Architecture
 
@@ -45,10 +45,20 @@ npm run dev      # generates the Prisma client, syncs the DB, seeds it,
                  # then runs the server (:3001) + client (:5173) together
 ```
 
-Open **http://localhost:5173** and sign in with any username — or click one of
-the seeded residents (willow, fern, sol, robin, moss). Open a second browser (or
-an incognito window) as a different user to watch messages, reactions and
-presence update live.
+Open **http://localhost:5173**. Production authentication is "Sign in with
+FruitScope" (OIDC against `login.fruitscope.com`). For local development, set
+`ALLOW_DEV_LOGIN=true` and forge a session without the IdP:
+
+```bash
+curl -i -c cookies.txt -X POST http://localhost:3001/api/auth/dev-login \
+  -H 'content-type: application/json' \
+  -d '{"sub":"42","displayName":"Willow Vale","orchardCode":"SUN","orchardName":"Sunrise Orchard"}'
+# add "isSuperAdmin": true to land on orchard-robotics with the workspace switcher
+```
+
+The session is delivered as an httpOnly cookie; open a second browser (or an
+incognito window) as a different `sub` to watch messages, reactions and presence
+update live.
 
 ### Useful scripts
 
@@ -66,10 +76,13 @@ presence update live.
 
 ## How it fits together
 
-1. `POST /api/auth/login` returns a session token (stored in `localStorage`).
-2. The client connects a Socket.IO with that token; the server authenticates it
-   in middleware and tracks presence per connection.
-3. `GET /api/bootstrap` hydrates the workspace (users, channels, recent messages).
+1. `GET /api/auth/login` starts the OIDC authorization-code + PKCE flow; the
+   `/api/auth/callback` verifies the ID token, provisions the user + their
+   orchard (from the `fruitscope` claim), and sets an httpOnly session cookie.
+2. The client connects Socket.IO with `withCredentials`; the server reads the
+   session cookie in middleware and tracks presence per connection.
+3. `GET /api/bootstrap` hydrates the workspace (users, channels) for the orchard
+   the session is scoped to; super admins can re-scope via `/api/orchards/switch`.
 4. From there everything is event-driven: `message:send`, `message:react`,
    `channel:create`, `dm:open`, `typing:*`, `channel:history`, `channel:read`.
 

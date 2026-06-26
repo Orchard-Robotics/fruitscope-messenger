@@ -1,21 +1,19 @@
 import type { Bootstrap, Orchard, User } from "@shared/index";
 
-const TOKEN_KEY = "fruitscope.token";
+/** Full-page navigation target that starts the "Sign in with FruitScope" flow. */
+export const LOGIN_URL = "/api/auth/login";
 
-export const tokenStore = {
-  get: (): string | null => localStorage.getItem(TOKEN_KEY),
-  set: (token: string): void => localStorage.setItem(TOKEN_KEY, token),
-  clear: (): void => localStorage.removeItem(TOKEN_KEY),
-};
-
-async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init.headers as Record<string, string> | undefined),
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(`/api${path}`, { ...init, headers });
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    // The session rides on an httpOnly cookie — same-origin in dev (via the Vite
+    // proxy) and prod (behind the load balancer), so the cookie is always sent.
+    credentials: "same-origin",
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init.headers as Record<string, string> | undefined),
+    },
+  });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Request failed (${res.status})`);
@@ -24,12 +22,14 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string):
 }
 
 export const rest = {
+  me: () => request<User>("/me"),
+  bootstrap: () => request<Bootstrap>("/bootstrap"),
+  /** Orchards the current user can switch into (all for super admins). */
   orchards: () => request<Orchard[]>("/orchards"),
-  login: (username: string, orchardId: string, displayName?: string) =>
-    request<{ token: string; user: User; orchard: Orchard }>("/auth/login", {
+  switchOrchard: (orchardId: string) =>
+    request<{ orchard: Orchard }>("/orchards/switch", {
       method: "POST",
-      body: JSON.stringify({ username, orchardId, ...(displayName ? { displayName } : {}) }),
+      body: JSON.stringify({ orchardId }),
     }),
-  me: (token: string) => request<User>("/me", {}, token),
-  bootstrap: (token: string) => request<Bootstrap>("/bootstrap", {}, token),
+  logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
 };

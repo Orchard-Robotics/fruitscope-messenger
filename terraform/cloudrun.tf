@@ -50,6 +50,38 @@ resource "google_cloud_run_v2_service" "verdant" {
         }
       }
 
+      # "Sign in with FruitScope" (OIDC). Public origin drives the redirect URI,
+      # post-login redirects and the session-cookie Secure flag.
+      env {
+        name  = "APP_URL"
+        value = "https://${var.domain}"
+      }
+
+      env {
+        name  = "OIDC_ISSUER"
+        value = var.oidc_issuer
+      }
+
+      env {
+        name  = "OIDC_CLIENT_ID"
+        value = var.oidc_client_id
+      }
+
+      env {
+        name  = "OIDC_REDIRECT_URI"
+        value = "https://${var.domain}/api/auth/callback"
+      }
+
+      env {
+        name = "OIDC_CLIENT_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.oidc_client_secret.secret_id
+            version = "latest"
+          }
+        }
+      }
+
       volume_mounts {
         name       = "cloudsql"
         mount_path = "/cloudsql"
@@ -68,6 +100,7 @@ resource "google_cloud_run_v2_service" "verdant" {
     google_project_service.services,
     google_secret_manager_secret_version.database_url,
     google_secret_manager_secret_iam_member.runtime_db_url,
+    google_secret_manager_secret_iam_member.runtime_oidc_secret,
   ]
 }
 

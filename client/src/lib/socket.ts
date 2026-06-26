@@ -19,15 +19,15 @@ type ChatSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 const ACK_TIMEOUT_MS = 10_000;
 
 let socket: ChatSocket | null = null;
-let sessionToken: string | null = null;
 let hasConnectedOnce = false;
 
 /** Connect (idempotently) and bind every server event to a store mutation. */
-export function connectSocket(token: string): ChatSocket {
+export function connectSocket(): ChatSocket {
   if (socket) return socket;
 
-  sessionToken = token;
-  socket = io({ auth: { token }, transports: ["websocket", "polling"] });
+  // The handshake carries the httpOnly session cookie (same-origin), so there's
+  // no token to pass — the server reads the cookie to scope the socket.
+  socket = io({ withCredentials: true, transports: ["websocket", "polling"] });
   const store = useChatStore.getState;
 
   socket.on("connect", () => {
@@ -54,15 +54,13 @@ export function connectSocket(token: string): ChatSocket {
 export function disconnectSocket(): void {
   socket?.disconnect();
   socket = null;
-  sessionToken = null;
   hasConnectedOnce = false;
 }
 
 async function resync(): Promise<void> {
-  if (!sessionToken) return;
   try {
     const store = useChatStore.getState();
-    store.loadBootstrap(await rest.bootstrap(sessionToken));
+    store.loadBootstrap(await rest.bootstrap());
     // Refresh the open channel's recent page so we catch anything missed while
     // disconnected (other channels re-hydrate lazily when next opened).
     const active = store.activeChannelId;
