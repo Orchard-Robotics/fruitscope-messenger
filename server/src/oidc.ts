@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import * as client from "openid-client";
 import { z } from "zod";
 
-import { APP_URL, oidc, SESSION_SECRET } from "./env";
+import { APP_URL, oidc, oidcAllowInsecure, SESSION_SECRET } from "./env";
 
 /* ------------------------------------------------------------------ */
 /* Provider discovery (memoised)                                        */
@@ -18,13 +18,22 @@ let configPromise: Promise<client.Configuration> | null = null;
  */
 export function getOidcConfig(): Promise<client.Configuration> {
   if (!configPromise) {
+    const options = oidcAllowInsecure
+      ? { execute: [client.allowInsecureRequests] }
+      : undefined;
     configPromise = client
       .discovery(
         new URL(oidc.issuer),
         oidc.clientId,
         oidc.clientSecret,
         client.ClientSecretBasic(oidc.clientSecret),
+        options,
       )
+      .then((config) => {
+        // Permit plain-http token/JWKS calls when pointing at a local provider.
+        if (oidcAllowInsecure) client.allowInsecureRequests(config);
+        return config;
+      })
       .catch((err: unknown) => {
         configPromise = null;
         throw err;

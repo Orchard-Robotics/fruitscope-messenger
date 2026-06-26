@@ -54,3 +54,10 @@ export const SESSION_SECRET =
  * without reaching the real IdP. Hard-gated — never in production.
  */
 export const allowDevLogin = !isProd && process.env.ALLOW_DEV_LOGIN === "true";
+
+/**
+ * Allow the OIDC issuer to be reached over plain http:// — only when pointing
+ * at a locally-running provider. Hard-gated to non-production so a real
+ * deployment can never silently drop TLS on the token/JWKS calls.
+ */
+export const oidcAllowInsecure = !isProd && process.env.OIDC_ALLOW_INSECURE === "true";
