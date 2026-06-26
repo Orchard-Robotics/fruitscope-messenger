@@ -24,8 +24,7 @@ output "oidc_redirect_uri" {
   value       = "https://${var.domain}/api/auth/callback"
 }
 
-output "oidc_client_secret" {
-  description = "Confidential client secret — register the SAME value in the provider's OAUTH_CLIENTS"
-  value       = random_password.oidc_client_secret.result
-  sensitive   = true
-}
+# The client secret is provisioned out-of-band in Secret Manager
+# (verdant-oidc-client-secret) and shared with the OIDC provider's OAUTH_CLIENTS;
+# Terraform only references it, so it is not a Terraform output. Read it with:
+#   gcloud secrets versions access latest --secret=verdant-oidc-client-secret

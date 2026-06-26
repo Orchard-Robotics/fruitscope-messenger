@@ -6,27 +6,30 @@ on the OIDC provider (`login.fruitscope.com`, served by `cloud/oauth` in the
 **no dynamic registration** — relying parties come from its `OAUTH_CLIENTS` env
 (a JSON array), so this is a one-time config change.
 
-This is the **only remaining step** to make login live; until it lands, the
-messenger redirects to the provider but the client is rejected.
+The remaining step to make login live is the `fruitscope-cluster-config` change
+(section 3) — until it lands, the messenger redirects to the provider but the
+client is rejected.
 
-## 1. Shared client secret
+## Secrets (already provisioned)
 
-Terraform (this repo) generates the secret and stores it in Secret Manager as
-`verdant-oidc-client-secret` (same GCP project as the cluster,
-`braided-visitor-372321`). After the messenger deploys:
+The shared client secret is **provisioned out-of-band** in Secret Manager
+(project `braided-visitor-372321`) — the same convention as the other
+`fruitscope-prod-oauth-*` secrets. Both already exist:
+
+- **`verdant-oidc-client-secret`** — the raw client secret. The messenger's
+  Cloud Run service references it for `OIDC_CLIENT_SECRET` (Terraform reads it by
+  name via a data source; it does **not** generate or rotate it).
+- **`fruitscope-prod-oauth-clients`** — the `OAUTH_CLIENTS` JSON array for the
+  provider, embedding the same secret.
+
+They were created with (recorded here for rotation / disaster recovery):
 
 ```bash
-SECRET=$(gcloud secrets versions access latest \
-  --secret=verdant-oidc-client-secret --project=braided-visitor-372321)
-```
+S=$(openssl rand -hex 32)
+printf '%s' "$S" | gcloud secrets create verdant-oidc-client-secret \
+  --data-file=- --replication-policy=automatic --project=braided-visitor-372321
 
-## 2. Create the provider-side secret (`fruitscope-prod-oauth-clients`)
-
-The provider reads `OAUTH_CLIENTS` from a GCP secret via External Secrets. Build
-the JSON array (embedding the shared secret) and store it:
-
-```bash
-OAUTH_CLIENTS=$(jq -nc --arg s "$SECRET" '[{
+OAUTH_CLIENTS=$(jq -nc --arg s "$S" '[{
   client_id: "fruitscope-messenger",
   client_secret: $s,
   grant_types: ["authorization_code"],
@@ -36,16 +39,18 @@ OAUTH_CLIENTS=$(jq -nc --arg s "$SECRET" '[{
   scope: "openid profile email phone fruitscope",
   first_party: true
 }]')
-
 printf '%s' "$OAUTH_CLIENTS" | gcloud secrets create fruitscope-prod-oauth-clients \
-  --data-file=- --project=braided-visitor-372321
-# (if it already exists, use: gcloud secrets versions add fruitscope-prod-oauth-clients --data-file=-)
+  --data-file=- --replication-policy=automatic --project=braided-visitor-372321
 ```
+
+To **rotate**: generate a new `S`, add a new version to *both* secrets
+(`gcloud secrets versions add … --data-file=-`), then restart the messenger and
+the OIDC provider so they pick up `latest`.
 
 `first_party: true` auto-grants consent (no consent screen) — the messenger is a
 first-party FruitScope property.
 
-## 3. Wire it into `fruitscope-cluster-config` (prod)
+## Wire it into `fruitscope-cluster-config` (prod)
 
 **`environments/prod/secrets.yaml`** — add the key to the `fruitscope-oauth`
 External Secret:

@@ -76,7 +76,7 @@ resource "google_cloud_run_v2_service" "verdant" {
         name = "OIDC_CLIENT_SECRET"
         value_source {
           secret_key_ref {
-            secret  = google_secret_manager_secret.oidc_client_secret.secret_id
+            secret  = data.google_secret_manager_secret.oidc_client_secret.secret_id
             version = "latest"
           }
         }
@@ -100,7 +100,6 @@ resource "google_cloud_run_v2_service" "verdant" {
     google_project_service.services,
     google_secret_manager_secret_version.database_url,
     google_secret_manager_secret_iam_member.runtime_db_url,
-    google_secret_manager_secret_version.oidc_client_secret,
     google_secret_manager_secret_iam_member.runtime_oidc_secret,
   ]
 }
