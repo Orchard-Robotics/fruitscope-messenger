@@ -15,10 +15,11 @@ export type SessionStatus = "loading" | "anon" | "ready";
 
 interface ChatState {
   /* session */
-  token: string | null;
   me: User | null;
   /** The orchard this session is scoped to. */
   orchard: Orchard | null;
+  /** Whether the signed-in user is a FruitScope super admin (can switch orchards). */
+  isSuperAdmin: boolean;
   session: SessionStatus;
   connected: boolean;
 
@@ -37,7 +38,7 @@ interface ChatState {
   unread: Record<ID, number>;
 
   /* session actions */
-  signIn: (token: string, me: User) => void;
+  signIn: (me: User) => void;
   signOut: () => void;
   setSession: (session: SessionStatus) => void;
   setConnected: (connected: boolean) => void;
@@ -77,9 +78,9 @@ function pickInitialChannel(channels: Channel[]): ID | null {
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
-  token: null,
   me: null,
   orchard: null,
+  isSuperAdmin: false,
   session: "loading",
   connected: false,
 
@@ -95,13 +96,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Sets identity but keeps `session` as-is; `loadBootstrap` flips to "ready"
   // once data has arrived so the workspace never flashes empty.
-  signIn: (token, me) => set({ token, me }),
+  signIn: (me) => set({ me }),
 
   signOut: () =>
     set({
-      token: null,
       me: null,
       orchard: null,
+      isSuperAdmin: false,
       session: "anon",
       connected: false,
       users: {},
@@ -129,6 +130,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return {
         me,
         orchard: data.orchard,
+        isSuperAdmin: data.isSuperAdmin,
         users,
         channels: toRecord(data.channels),
         session: "ready",

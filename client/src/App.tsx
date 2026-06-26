@@ -1,53 +1,49 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { rest, tokenStore } from "@/lib/api";
+import { rest } from "@/lib/api";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
 import { Login } from "./components/Login";
 import { Logo } from "./components/Logo";
 import { Workspace } from "./components/Workspace";
 
+/** Pull (and clear) a `?login_error=…` left by the OIDC callback redirect. */
+function takeLoginError(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("login_error");
+  if (!code) return null;
+  params.delete("login_error");
+  const qs = params.toString();
+  window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+  return code;
+}
+
 export function App() {
   const session = useChatStore((s) => s.session);
   const didInit = useRef(false);
+  const [loginError] = useState(takeLoginError);
 
-  // Resume an existing session from a stored token on first load.
+  // Resume an existing session from the httpOnly cookie on first load.
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
 
     const store = useChatStore.getState();
-    const token = tokenStore.get();
-    if (!token) {
-      store.setSession("anon");
-      return;
-    }
-
     void (async () => {
       try {
-        const me = await rest.me(token);
-        store.signIn(token, me);
-        connectSocket(token);
-        store.loadBootstrap(await rest.bootstrap(token));
+        const me = await rest.me();
+        store.signIn(me);
+        connectSocket();
+        store.loadBootstrap(await rest.bootstrap());
       } catch {
-        tokenStore.clear();
         disconnectSocket();
-        store.signOut();
+        store.setSession("anon");
       }
     })();
   }, []);
 
-  const handleLogin = async (username: string, orchardId: string, displayName?: string) => {
-    const store = useChatStore.getState();
-    const { token, user } = await rest.login(username, orchardId, displayName);
-    tokenStore.set(token);
-    store.signIn(token, user);
-    connectSocket(token);
-    store.loadBootstrap(await rest.bootstrap(token));
-  };
-
   if (session === "loading") return <Splash />;
-  if (session === "anon") return <Login onLogin={handleLogin} />;
+  if (session === "anon") return <Login error={loginError} />;
   return <Workspace />;
 }
 

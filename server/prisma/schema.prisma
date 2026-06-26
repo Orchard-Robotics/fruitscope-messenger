@@ -41,8 +41,15 @@ model OrchardMembership {
 
 model User {
   id          String   @id
+  // The OIDC `sub` (FruitScope user id) — the stable identity key. Every user is
+  // provisioned from a "Sign in with FruitScope" login, so this is always set.
+  oidcSub     String   @unique
   username    String   @unique
   displayName String
+  email       String?
+  // Mirrors the `fruitscope.is_admin` claim. Super admins land on the
+  // orchard-robotics namespace and may switch into any other orchard.
+  isSuperAdmin Boolean @default(false)
   hue         Int
   status      String   @default("offline")
   createdAt   DateTime @default(now())

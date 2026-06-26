@@ -15,6 +15,7 @@ import type {
   User,
   UserStatus,
 } from "@shared/index";
+import type { FruitscopeIdentity } from "./oidc";
 import { prisma } from "./prisma";
 
 /* ------------------------------------------------------------------ */
@@ -76,11 +77,31 @@ function mapMessage(row: DbMessage): Message {
   };
 }
 
-/** Map a username to a stable avatar hue (0–360). */
+/** Map a seed (username / OIDC sub) to a stable avatar hue (0–360). */
 function hashHue(seed: string): number {
   let h = 0;
   for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) % 360;
   return h;
+}
+
+/** Reduce an arbitrary handle to the allowed username charset. */
+function sanitizeHandle(raw: string): string {
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "");
+  return cleaned || "user";
+}
+
+/** First unused username at/after `base` (`base`, `base-2`, `base-3`, …). */
+async function freeUsername(base: string): Promise<string> {
+  let candidate = base;
+  let n = 2;
+  while (await prisma.user.findUnique({ where: { username: candidate } })) {
+    candidate = `${base}-${n}`;
+    n += 1;
+  }
+  return candidate;
 }
 
 /* ------------------------------------------------------------------ */
@@ -105,6 +126,15 @@ export const orchards = {
     return rows.map(mapUser);
   },
 
+  /** Orchards the user is a member of (the regular user's switcher list). */
+  forUser: async (userId: ID): Promise<Orchard[]> => {
+    const rows = await prisma.orchard.findMany({
+      where: { members: { some: { userId } } },
+      orderBy: { name: "asc" },
+    });
+    return rows.map(mapOrchard);
+  },
+
   isMember: async (orchardId: ID, userId: ID): Promise<boolean> =>
     (await prisma.orchardMembership.count({ where: { orchardId, userId } })) > 0,
 
@@ -114,6 +144,19 @@ export const orchards = {
       create: { orchardId, userId },
       update: {},
     });
+  },
+
+  /**
+   * Find-or-create an orchard by its FruitScope code. New orchards are created
+   * lazily the first time a member of them signs in (first writer sets the name).
+   */
+  upsertByCode: async (code: string, name: string): Promise<Orchard> => {
+    const row = await prisma.orchard.upsert({
+      where: { code },
+      create: { id: nanoid(10), code, name },
+      update: {},
+    });
+    return mapOrchard(row);
   },
 };
 
@@ -127,14 +170,40 @@ export const users = {
     return row ? mapUser(row) : undefined;
   },
 
-  byUsername: async (username: string): Promise<User | undefined> => {
-    const row = await prisma.user.findUnique({ where: { username } });
-    return row ? mapUser(row) : undefined;
-  },
+  isSuperAdmin: async (id: ID): Promise<boolean> =>
+    (await prisma.user.findUnique({ where: { id } }))?.isSuperAdmin ?? false,
 
-  create: async (username: string, displayName: string): Promise<User> => {
+  /**
+   * Provision (or refresh) the local user record from a verified FruitScope
+   * identity. Keyed by the OIDC `sub`; display name / email / admin flag are
+   * re-synced on every login so the snapshot tracks the IdP.
+   */
+  upsertFromOidc: async (identity: FruitscopeIdentity): Promise<User> => {
+    const displayName =
+      identity.displayName ?? identity.preferredUsername ?? identity.email ?? "FruitScope user";
+
+    const existing = await prisma.user.findUnique({ where: { oidcSub: identity.sub } });
+    if (existing) {
+      const row = await prisma.user.update({
+        where: { id: existing.id },
+        data: { displayName, email: identity.email ?? null, isSuperAdmin: identity.isSuperAdmin },
+      });
+      return mapUser(row);
+    }
+
+    const base = sanitizeHandle(
+      identity.preferredUsername ?? identity.email?.split("@")[0] ?? `user-${identity.sub}`,
+    );
     const row = await prisma.user.create({
-      data: { id: nanoid(10), username, displayName, hue: hashHue(username) },
+      data: {
+        id: nanoid(10),
+        oidcSub: identity.sub,
+        username: await freeUsername(base),
+        displayName,
+        email: identity.email ?? null,
+        isSuperAdmin: identity.isSuperAdmin,
+        hue: hashHue(identity.sub),
+      },
     });
     return mapUser(row);
   },
@@ -315,8 +384,11 @@ export const reads = {
 /* ------------------------------------------------------------------ */
 
 export async function bootstrap(userId: ID, orchardId: ID): Promise<Bootstrap> {
-  const [me, orchard] = await Promise.all([users.byId(userId), orchards.byId(orchardId)]);
-  if (!me) throw new Error(`Unknown user ${userId}`);
+  const [meRow, orchard] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId } }),
+    orchards.byId(orchardId),
+  ]);
+  if (!meRow) throw new Error(`Unknown user ${userId}`);
   if (!orchard) throw new Error(`Unknown orchard ${orchardId}`);
 
   // No messages here — the client loads each channel's first page lazily on open
@@ -326,5 +398,11 @@ export async function bootstrap(userId: ID, orchardId: ID): Promise<Bootstrap> {
     channels.visibleTo(userId, orchardId),
   ]);
 
-  return { me, orchard, users: members, channels: visible };
+  return {
+    me: mapUser(meRow),
+    orchard,
+    users: members,
+    channels: visible,
+    isSuperAdmin: meRow.isSuperAdmin,
+  };
 }

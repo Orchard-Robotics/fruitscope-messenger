@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
 import compression from "compression";
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { Server } from "socket.io";
@@ -10,19 +11,23 @@ import type {
   ServerToClientEvents,
   SocketData,
 } from "@shared/index";
-import { PORT } from "./env";
+import { isProd, oidcConfigured, PORT } from "./env";
 import { api } from "./http";
 import { prisma } from "./prisma";
-import { seed } from "./seed";
 import { attachSockets } from "./socket";
 
-await seed();
+if (isProd && !oidcConfigured) {
+  console.warn(
+    "⚠️  OIDC_CLIENT_SECRET is not set — 'Sign in with FruitScope' is disabled until it is configured.",
+  );
+}
 
 const app = express();
 app.set("trust proxy", true); // behind the GCP load balancer
 app.use(compression()); // gzip API responses (the static SPA is served by GCS+CDN)
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser()); // reads the httpOnly session cookie
 app.use("/api", api);
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

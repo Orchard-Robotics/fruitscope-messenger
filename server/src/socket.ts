@@ -1,3 +1,4 @@
+import { parse as parseCookie } from "cookie";
 import type { Server, Socket } from "socket.io";
 import { z } from "zod";
 
@@ -9,6 +10,7 @@ import type {
 } from "@shared/index";
 import { REACTION_EMOJI } from "@shared/index";
 import { resolveToken } from "./auth";
+import { SESSION_COOKIE } from "./env";
 import { canAccess, channels, messages, orchards, reads, users } from "./store";
 
 type InterServerEvents = Record<string, never>;
@@ -148,8 +150,13 @@ export function attachSockets(io: IOServer): void {
   io.use((socket, next) => {
     void (async () => {
       try {
-        const token: unknown = socket.handshake.auth?.token;
-        const scope = typeof token === "string" ? await resolveToken(token) : undefined;
+        // The session rides on the httpOnly cookie (sent on the same-origin
+        // handshake); fall back to an explicit auth token for non-browser use.
+        const header = socket.handshake.headers.cookie;
+        const cookieToken = header ? parseCookie(header)[SESSION_COOKIE] : undefined;
+        const authToken = socket.handshake.auth?.token;
+        const token = cookieToken ?? (typeof authToken === "string" ? authToken : undefined);
+        const scope = token ? await resolveToken(token) : undefined;
         if (!scope) {
           next(new Error("Unauthorized"));
           return;

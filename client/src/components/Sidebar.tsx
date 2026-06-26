@@ -3,12 +3,13 @@ import { useMemo, useState } from "react";
 
 import type { Channel, ID, User } from "@shared/index";
 import { cn } from "@/lib/cn";
-import { tokenStore } from "@/lib/api";
+import { rest } from "@/lib/api";
 import { chat, disconnectSocket } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
 import { CreateChannelModal } from "./CreateChannelModal";
 import { Logo } from "./Logo";
+import { OrchardSwitcher } from "./OrchardSwitcher";
 import { PresenceDot } from "./PresenceDot";
 
 export function Sidebar({
@@ -19,7 +20,6 @@ export function Sidebar({
   onNavigate?: () => void;
 }) {
   const me = useChatStore((s) => s.me);
-  const orchard = useChatStore((s) => s.orchard);
   const users = useChatStore((s) => s.users);
   const channels = useChatStore((s) => s.channels);
   const unread = useChatStore((s) => s.unread);
@@ -78,9 +78,9 @@ export function Sidebar({
     if (res.ok) select(res.data.id);
   };
 
-  const signOut = () => {
+  const signOut = async () => {
     disconnectSocket();
-    tokenStore.clear();
+    await rest.logout().catch(() => {}); // best-effort: clear the server session + cookie
     useChatStore.getState().signOut();
   };
 
@@ -95,16 +95,8 @@ export function Sidebar({
       )}
     >
       <header className="flex items-center gap-3 px-5 pb-3 pt-5">
-        <Logo className="size-9" />
-        <div className="min-w-0 leading-tight">
-          <h1 className="truncate font-display text-lg font-bold text-ink">
-            {orchard?.name ?? "FruitScope"}
-          </h1>
-          <p className="flex items-center gap-1.5 text-xs text-ink-dim">
-            <span className="size-1.5 rounded-full bg-brand-500" />
-            {onlineCount} online
-          </p>
-        </div>
+        <Logo className="size-9 shrink-0" />
+        <OrchardSwitcher onlineCount={onlineCount} />
       </header>
 
       <div className="px-3 pb-2">
@@ -167,7 +159,7 @@ export function Sidebar({
           <p className="truncate text-xs text-ink-faint">@{me.username}</p>
         </div>
         <button
-          onClick={signOut}
+          onClick={() => void signOut()}
           title="Sign out"
           className="grid size-9 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2 hover:text-danger"
         >

@@ -76,6 +76,12 @@ export interface Bootstrap {
   /** Members of this orchard. */
   users: User[];
   channels: Channel[];
+  /**
+   * Whether the signed-in user is a FruitScope super admin. Super admins land on
+   * the orchard-robotics namespace and may switch into any other orchard via the
+   * workspace switcher; regular users are scoped to the orchards they belong to.
+   */
+  isSuperAdmin: boolean;
 }
 
 /**
