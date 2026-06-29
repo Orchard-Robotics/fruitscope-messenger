@@ -15,7 +15,8 @@ interface PrefsState extends Persisted {
 }
 
 const KEY = "fruitscope.prefs";
-const DEFAULTS: Persisted = { theme: "system", compact: false, reduceMotion: false };
+// Default to light; users can switch to Dark or System in the menu.
+const DEFAULTS: Persisted = { theme: "light", compact: false, reduceMotion: false };
 
 function loadPrefs(): Persisted {
   try {
