@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 export function Modal({
   open,
@@ -23,7 +24,9 @@ export function Modal({
 
   if (!open) return null;
 
-  return (
+  // Portal to <body> so the fixed overlay is never trapped inside a transformed
+  // or blurred ancestor (e.g. the sidebar), which would re-anchor `position:fixed`.
+  return createPortal(
     <div className="anim-fade-in fixed inset-0 z-50 grid place-items-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div
@@ -43,6 +46,7 @@ export function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
