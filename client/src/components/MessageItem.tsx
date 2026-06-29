@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { timeOfDay } from "@/lib/format";
 import { chat } from "@/lib/socket";
 import { Avatar } from "./Avatar";
+import { MessageContent } from "./MessageContent";
 
 const FALLBACK: Pick<User, "displayName" | "hue"> = { displayName: "?", hue: 0 };
 
@@ -50,9 +51,7 @@ export function MessageItem({ message, author, showHeader, meId }: MessageItemPr
           </div>
         )}
 
-        <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink/90">
-          {message.content}
-        </p>
+        <MessageContent content={message.content} meId={meId} />
 
         {message.reactions.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1.5">

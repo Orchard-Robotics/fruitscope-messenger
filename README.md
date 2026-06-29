@@ -15,6 +15,7 @@ responsive down to mobile.
 - **Direct messages** — start a DM with anyone, created on demand
 - **Real-time everything** — messages, reactions, presence and typing all stream over Socket.IO
 - **Presence** — live online/away/offline dots and an online count
+- **@mentions** — Slack-style autocomplete (type `@`, filter by name, ↑↓/Enter/Tab); mentions render as pills, mentions of you are highlighted, and channels with an unread mention get a red badge
 - **Typing indicators**, **emoji reactions**, **unread badges**, message grouping & day dividers
 - **History pagination** — older messages load as you scroll up
 - **Sign in with FruitScope (OIDC)** — per-orchard workspaces; super admins can switch between orchards
