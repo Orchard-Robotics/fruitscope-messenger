@@ -14,8 +14,14 @@ export interface User {
   id: ID;
   username: string;
   displayName: string;
-  /** A stable HSL hue (0–360) used to render the avatar gradient. */
+  /** A stable HSL hue (0–360) used to render the avatar gradient fallback. */
   hue: number;
+  /**
+   * Public URL of the user's uploaded profile picture, or null when they have
+   * none (the client falls back to the hue gradient + initials). Served from GCS
+   * behind a CDN in prod, and from the local fake-gcs emulator in development.
+   */
+  avatarUrl: string | null;
   status: UserStatus;
   createdAt: Timestamp;
 }

@@ -1,5 +1,5 @@
-# Local Postgres for development (mirrors Cloud SQL in production).
-# `npm run dev` brings this up automatically (npm run db:up / db:down to manage).
+# Local backing services for development (they mirror prod: Cloud SQL + GCS).
+# `npm run dev` brings these up automatically (npm run db:up / db:down to manage).
 services:
   db:
     image: postgres:16-alpine
@@ -18,5 +18,25 @@ services:
       timeout: 3s
       retries: 15
 
+  # Emulated Google Cloud Storage (stands in for real GCS + the CDN in prod).
+  # The server uploads profile pictures here; the browser reads them straight
+  # from this emulator at http://localhost:4443/<bucket>/<object> — never through
+  # the backend, exactly as it reads from the CDN in prod. -external-url/-public-host
+  # make the emulator serve/return URLs that match what the browser uses.
+  gcs:
+    image: fsouza/fake-gcs-server:latest
+    container_name: verdant-fake-gcs
+    command:
+      - "-scheme=http"
+      - "-host=0.0.0.0"
+      - "-port=4443"
+      - "-public-host=localhost:4443"
+      - "-external-url=http://localhost:4443"
+    ports:
+      - "4443:4443"
+    volumes:
+      - verdant-gcsdata:/storage
+
 volumes:
   verdant-pgdata:
+  verdant-gcsdata:

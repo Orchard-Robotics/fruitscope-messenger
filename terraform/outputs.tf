@@ -12,6 +12,11 @@ output "url" {
   value = "https://${var.domain}"
 }
 
+output "media_url" {
+  description = "Dedicated CDN subdomain serving uploaded media (profile pictures)"
+  value       = "https://media.${var.domain}"
+}
+
 # --- OIDC client registration (for the FruitScope provider side) ---
 
 output "oidc_client_id" {

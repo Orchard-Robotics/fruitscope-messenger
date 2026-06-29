@@ -17,6 +17,7 @@ import type {
 } from "@shared/index";
 import type { FruitscopeIdentity } from "./oidc";
 import { prisma } from "./prisma";
+import { publicUrl } from "./storage";
 
 /* ------------------------------------------------------------------ */
 /* Row → DTO mapping                                                   */
@@ -34,6 +35,8 @@ function mapUser(row: DbUser): User {
     username: row.username,
     displayName: row.displayName,
     hue: row.hue,
+    // Build the public CDN/emulator URL from the stored key at read time.
+    avatarUrl: row.avatarKey ? publicUrl(row.avatarKey) : null,
     status: row.status as UserStatus,
     createdAt: row.createdAt.getTime(),
   };
@@ -172,6 +175,14 @@ export const users = {
 
   isSuperAdmin: async (id: ID): Promise<boolean> =>
     (await prisma.user.findUnique({ where: { id } }))?.isSuperAdmin ?? false,
+
+  /** Current avatar object key (to delete the old object on change/removal). */
+  avatarKey: async (id: ID): Promise<string | null> =>
+    (await prisma.user.findUnique({ where: { id } }))?.avatarKey ?? null,
+
+  /** Set (or clear, with null) the avatar object key; returns the updated user. */
+  setAvatarKey: async (id: ID, key: string | null): Promise<User> =>
+    mapUser(await prisma.user.update({ where: { id }, data: { avatarKey: key } })),
 
   /**
    * Provision (or refresh) the local user record from a verified FruitScope

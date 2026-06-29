@@ -18,6 +18,7 @@ responsive down to mobile.
 - **Typing indicators**, **emoji reactions**, **unread badges**, message grouping & day dividers
 - **History pagination** — older messages load as you scroll up
 - **Sign in with FruitScope (OIDC)** — per-orchard workspaces; super admins can switch between orchards
+- **Profile pictures** — upload/change/remove your avatar; images live in GCS behind a CDN (a local `fake-gcs` emulator in dev), and the browser reads them straight from the CDN — never through the backend
 
 ## Architecture
 
@@ -41,9 +42,15 @@ fruitscope-messenger/
 
 ```bash
 npm install      # installs all workspaces
-npm run dev      # generates the Prisma client, syncs the DB, seeds it,
-                 # then runs the server (:3001) + client (:5173) together
+npm run dev      # brings up the backing services (Postgres + fake-gcs) via
+                 # docker-compose, applies migrations, then runs the
+                 # server (:3001) + client (:5173) together
 ```
+
+`npm run dev` starts two docker-compose services: **Postgres** (`:5432`) and a
+**fake-gcs-server** GCS emulator (`:4443`) that profile pictures are uploaded to.
+The browser reads avatars directly from the emulator (`http://localhost:4443/…`),
+exactly as it reads from the CDN in production.
 
 Open **http://localhost:5173**. Production authentication is "Sign in with
 FruitScope" (OIDC against `login.fruitscope.com`). For local development, set

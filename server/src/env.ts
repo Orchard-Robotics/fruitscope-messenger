@@ -61,3 +61,28 @@ export const allowDevLogin = !isProd && process.env.ALLOW_DEV_LOGIN === "true";
  * deployment can never silently drop TLS on the token/JWKS calls.
  */
 export const oidcAllowInsecure = !isProd && process.env.OIDC_ALLOW_INSECURE === "true";
+
+/* ------------------------------------------------------------------ */
+/* Object storage — profile pictures.                                  */
+/* GCS in prod (objects served via the CDN), the fake-gcs emulator     */
+/* locally. The server uploads; the browser reads the public URL.      */
+/* ------------------------------------------------------------------ */
+
+export const media = {
+  /** Bucket holding uploaded media (avatars). */
+  bucket: process.env.GCS_MEDIA_BUCKET ?? "fruitscope-media",
+  /**
+   * When set, the GCS client talks to a local emulator (fake-gcs-server) at this
+   * endpoint instead of real GCS — no credentials, and the bucket is auto-created
+   * on boot. Unset in prod, where Application Default Credentials are used.
+   */
+  emulatorHost: process.env.GCS_EMULATOR_HOST,
+  /**
+   * Base the public avatar URL is built on: `${base}/${objectKey}`.
+   *  - prod:  https://fruitscope-messenger.com  (LB path rule /avatars/* → CDN bucket)
+   *  - local: http://localhost:4443/fruitscope-media  (fake-gcs public object path)
+   */
+  publicBase: (process.env.MEDIA_PUBLIC_BASE ?? `${APP_URL}`).replace(/\/+$/, ""),
+};
+
+export const usingGcsEmulator = Boolean(media.emulatorHost);

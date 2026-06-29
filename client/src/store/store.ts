@@ -39,6 +39,8 @@ interface ChatState {
 
   /* session actions */
   signIn: (me: User) => void;
+  /** Update the signed-in user (e.g. after a profile-picture change). */
+  setMe: (me: User) => void;
   signOut: () => void;
   setSession: (session: SessionStatus) => void;
   setConnected: (connected: boolean) => void;
@@ -97,6 +99,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Sets identity but keeps `session` as-is; `loadBootstrap` flips to "ready"
   // once data has arrived so the workspace never flashes empty.
   signIn: (me) => set({ me }),
+
+  setMe: (me) => set((s) => ({ me, users: { ...s.users, [me.id]: me } })),
 
   signOut: () =>
     set({
