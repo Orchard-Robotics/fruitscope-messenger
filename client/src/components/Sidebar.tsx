@@ -1,9 +1,9 @@
-import { Hash, Lock, Plus, Search, Settings } from "lucide-react";
+import { Hash, Lock, Plus, Search, Settings, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { Channel, ID, User } from "@shared/index";
 import { cn } from "@/lib/cn";
-import { isSelfDm } from "@/lib/channel";
+import { channelTitle, isGroupDm, isSelfDm } from "@/lib/channel";
 import { rest } from "@/lib/api";
 import { chat, disconnectSocket } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
@@ -11,6 +11,7 @@ import { AppMenu } from "./AppMenu";
 import { Avatar } from "./Avatar";
 import { CreateChannelModal } from "./CreateChannelModal";
 import { Logo } from "./Logo";
+import { NewDmModal } from "./NewDmModal";
 import { OrchardSwitcher } from "./OrchardSwitcher";
 import { PresenceDot } from "./PresenceDot";
 import { ProfileModal } from "./ProfileModal";
@@ -35,6 +36,7 @@ export function Sidebar({
   const [creating, setCreating] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [newDm, setNewDm] = useState(false);
 
   const channelList = useMemo(
     () =>
@@ -71,6 +73,17 @@ export function Sidebar({
   // The "message yourself" DM, if it's been opened (always offered via the row).
   const selfDm = useMemo(
     () => (me ? Object.values(channels).find((c) => isSelfDm(c, me.id)) : undefined),
+    [channels, me],
+  );
+
+  // Group (multi-person) DMs, newest first.
+  const groupDms = useMemo(
+    () =>
+      me
+        ? Object.values(channels)
+            .filter((c) => isGroupDm(c, me.id))
+            .sort((a, b) => b.createdAt - a.createdAt)
+        : [],
     [channels, me],
   );
 
@@ -121,7 +134,7 @@ export function Sidebar({
 
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-3">
         <section>
-          <SectionHeader label="Channels" onAdd={() => setCreating(true)} />
+          <SectionHeader label="Channels" onAdd={() => setCreating(true)} addTitle="Create channel" />
           <ul className="mt-1 space-y-0.5">
             {channelList.map((c) => (
               <ChannelRow
@@ -138,7 +151,7 @@ export function Sidebar({
         </section>
 
         <section>
-          <SectionHeader label="Direct messages" />
+          <SectionHeader label="Direct messages" onAdd={() => setNewDm(true)} addTitle="New message" />
           <ul className="mt-1 space-y-0.5">
             {/* Pinned "message yourself" row, Slack-style. */}
             <SelfDmRow
@@ -147,6 +160,18 @@ export function Sidebar({
               unread={selfDm ? (unread[selfDm.id] ?? 0) : 0}
               onClick={() => void openDm(me.id)}
             />
+            {/* Group (multi-person) DMs. */}
+            {groupDms.map((c) => (
+              <GroupDmRow
+                key={c.id}
+                title={channelTitle(c, users, me.id)}
+                count={c.memberIds.length}
+                active={c.id === activeChannelId}
+                unread={unread[c.id] ?? 0}
+                mentioned={mentions[c.id] ?? false}
+                onClick={() => select(c.id)}
+              />
+            ))}
             {people.map((person) => {
               const dm = dmByPartner.get(person.id);
               const dmUnread = dm ? (unread[dm.id] ?? 0) : 0;
@@ -197,20 +222,29 @@ export function Sidebar({
 
       <CreateChannelModal open={creating} onClose={() => setCreating(false)} />
       <ProfileModal open={editingProfile} onClose={() => setEditingProfile(false)} />
+      <NewDmModal open={newDm} onClose={() => setNewDm(false)} />
     </aside>
   );
 }
 
 const rankStatus = (u: User): number => (u.status === "online" ? 2 : u.status === "away" ? 1 : 0);
 
-function SectionHeader({ label, onAdd }: { label: string; onAdd?: () => void }) {
+function SectionHeader({
+  label,
+  onAdd,
+  addTitle,
+}: {
+  label: string;
+  onAdd?: () => void;
+  addTitle?: string;
+}) {
   return (
     <div className="flex items-center justify-between px-2">
       <span className="text-xs font-semibold uppercase tracking-wider text-ink-faint">{label}</span>
       {onAdd && (
         <button
           onClick={onAdd}
-          title="Create channel"
+          title={addTitle ?? "Add"}
           className="grid size-6 place-items-center rounded-md text-ink-faint transition hover:bg-surface-2 hover:text-brand-600"
         >
           <Plus className="size-4" />
@@ -329,6 +363,42 @@ function SelfDmRow({
           you
         </span>
         {unread > 0 && <UnreadBadge count={unread} mentioned={false} />}
+      </button>
+    </li>
+  );
+}
+
+// A multi-person DM: a group glyph + the participants' names.
+function GroupDmRow({
+  title,
+  count,
+  active,
+  unread,
+  mentioned,
+  onClick,
+}: {
+  title: string;
+  count: number;
+  active: boolean;
+  unread: number;
+  mentioned: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <li>
+      <button
+        onClick={onClick}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition",
+          active ? "bg-brand-500/12 text-brand-700" : "text-ink-dim hover:bg-surface-2 hover:text-ink",
+        )}
+      >
+        <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-surface-2 text-ink-dim">
+          <Users className="size-3.5" />
+        </span>
+        <span className={cn("truncate", unread > 0 && "font-semibold text-ink")}>{title}</span>
+        <span className="shrink-0 text-xs text-ink-faint">{count}</span>
+        {unread > 0 && <UnreadBadge count={unread} mentioned={mentioned} />}
       </button>
     </li>
   );

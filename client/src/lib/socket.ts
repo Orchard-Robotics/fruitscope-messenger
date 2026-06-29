@@ -118,6 +118,12 @@ export const chat = {
   openDm: (userId: ID): Promise<Result<Channel>> =>
     withAck((cb) => getSocket().emit("dm:open", { userId }, cb)),
 
+  openGroup: (userIds: ID[]): Promise<Result<Channel>> =>
+    withAck((cb) => getSocket().emit("dm:openGroup", { userIds }, cb)),
+
+  addMembers: (channelId: ID, userIds: ID[]): Promise<Result<Channel>> =>
+    withAck((cb) => getSocket().emit("channel:addMembers", { channelId, userIds }, cb)),
+
   history: (channelId: ID, before?: MessageCursor): Promise<Result<MessagePage>> =>
     withAck((cb) =>
       getSocket().emit("channel:history", { channelId, ...(before ? { before } : {}) }, cb),

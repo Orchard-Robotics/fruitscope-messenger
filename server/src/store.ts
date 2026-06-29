@@ -301,6 +301,21 @@ export const channels = {
     return row ? mapChannel(row) : undefined;
   },
 
+  /**
+   * Find a DM whose member set is EXACTLY the given users (any size: self, 1:1,
+   * or group) — so opening a group DM reuses the existing conversation.
+   */
+  findByMembers: async (orchardId: ID, memberIds: ID[]): Promise<Channel | undefined> => {
+    const ids = [...new Set(memberIds)];
+    const rows = await prisma.channel.findMany({
+      where: { orchardId, kind: "dm", members: { every: { userId: { in: ids } } } },
+      include: channelInclude,
+    });
+    // `every` allows subsets; an equal member count means an exact match.
+    const match = rows.find((r) => r.members.length === ids.length);
+    return match ? mapChannel(match) : undefined;
+  },
+
   /** The "message yourself" DM: a dm whose only member is the user. */
   findSelfDm: async (orchardId: ID, userId: ID): Promise<Channel | undefined> => {
     const row = await prisma.channel.findFirst({

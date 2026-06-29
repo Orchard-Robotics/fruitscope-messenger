@@ -1,7 +1,7 @@
 import { Hash, Lock, Menu, Users } from "lucide-react";
 
 import type { UserStatus } from "@shared/index";
-import { dmPartnerId, isSelfDm } from "@/lib/channel";
+import { channelTitle, dmPartnerId, isGroupDm, isSelfDm } from "@/lib/channel";
 import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
 import { PresenceDot } from "./PresenceDot";
@@ -19,6 +19,24 @@ export function ChannelHeader({ onOpenNav }: { onOpenNav?: (() => void) | undefi
   const meId = useChatStore((s) => s.me?.id);
 
   if (!channel || !meId) return null;
+
+  if (channel.kind === "dm" && isGroupDm(channel, meId)) {
+    return (
+      <Bar onOpenNav={onOpenNav}>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-ink-dim">
+            <Users className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="truncate font-display text-base font-bold text-ink">
+              {channelTitle(channel, users, meId)}
+            </h2>
+            <p className="truncate text-xs text-ink-dim">{channel.memberIds.length} members</p>
+          </div>
+        </div>
+      </Bar>
+    );
+  }
 
   if (channel.kind === "dm") {
     const self = isSelfDm(channel, meId);

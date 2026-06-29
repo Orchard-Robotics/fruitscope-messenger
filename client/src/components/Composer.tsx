@@ -5,7 +5,12 @@ import type { ID, User } from "@shared/index";
 import { REACTION_EMOJI } from "@shared/index";
 import { cn } from "@/lib/cn";
 import { resetToLatest } from "@/lib/jump";
-import { detectMentionQuery, encodeMentions, type MentionQuery } from "@/lib/mentions";
+import {
+  detectMentionQuery,
+  encodeMentions,
+  mentionedIds,
+  type MentionQuery,
+} from "@/lib/mentions";
 import { chat } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
@@ -15,12 +20,17 @@ const MAX_HEIGHT = 180;
 const TYPING_IDLE_MS = 2500;
 const MAX_SUGGESTIONS = 8;
 
+/** People mentioned in `content` who can't see this conversation (Slack's prompt). */
+type MentionNotice = { kind: "channel"; users: User[]; channelName: string } | { kind: "dm"; users: User[] };
+
 export function Composer({ channelId, placeholder }: { channelId: ID; placeholder: string }) {
   const [text, setText] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [notice, setNotice] = useState<MentionNotice | null>(null);
 
   const users = useChatStore((s) => s.users);
   const meId = useChatStore((s) => s.me?.id);
+  const channel = useChatStore((s) => s.channels[channelId]);
 
   /* @mention autocomplete state */
   const [mention, setMention] = useState<MentionQuery | null>(null);
@@ -83,6 +93,7 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
     setText("");
     setEmojiOpen(false);
     setMention(null);
+    setNotice(null);
     return () => stopTyping();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId]);
@@ -123,6 +134,18 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
     setMention(null);
   };
 
+  /** People mentioned in `content` who can't see this conversation. */
+  const outsiders = (content: string): User[] => {
+    if (!channel) return [];
+    // Public channels are readable by the whole orchard — nobody is an outsider.
+    if (channel.kind === "channel" && !channel.isPrivate) return [];
+    const members = new Set(channel.memberIds);
+    return mentionedIds(content)
+      .filter((id) => id !== meId && !members.has(id))
+      .map((id) => users[id])
+      .filter((u): u is User => Boolean(u));
+  };
+
   const send = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -133,16 +156,63 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
     const res = await chat.send(channelId, content);
     if (!res.ok) {
       setText(trimmed);
-    } else if (useChatStore.getState().detached[channelId]) {
-      // Sending from a jumped-to (historical) view snaps back to live so the
-      // message is visible at the bottom.
+      textareaRef.current?.focus();
+      return;
+    }
+    if (useChatStore.getState().detached[channelId]) {
+      // Sending from a jumped-to (historical) view snaps back to live.
       void resetToLatest(channelId);
+    }
+    // Slack-style: if you mentioned someone who can't see this conversation,
+    // prompt to add them (channel) or note they can't be added (DM).
+    const missing = outsiders(content);
+    if (missing.length && channel) {
+      setNotice(
+        channel.kind === "dm"
+          ? { kind: "dm", users: missing }
+          : { kind: "channel", users: missing, channelName: channel.name },
+      );
     }
     textareaRef.current?.focus();
   };
 
+  const addMissingToChannel = async () => {
+    if (!notice || notice.kind !== "channel") return;
+    const res = await chat.addMembers(channelId, notice.users.map((u) => u.id));
+    if (res.ok) setNotice(null);
+  };
+
   return (
     <div className="px-4 pb-5 pt-1">
+      {/* Slack-style "not in this conversation" prompt (only you see it). */}
+      {notice && (
+        <div className="anim-pop-in mb-2 flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-sm">
+          <span className="flex-1 text-ink-dim">
+            <span className="font-medium text-ink">
+              {notice.users.map((u) => `@${u.displayName}`).join(", ")}
+            </span>{" "}
+            {notice.users.length > 1 ? "aren’t" : "isn’t"} in this conversation
+            {notice.kind === "channel"
+              ? " yet."
+              : " — you can’t add people to a direct message."}
+          </span>
+          {notice.kind === "channel" && (
+            <button
+              onClick={() => void addMissingToChannel()}
+              className="shrink-0 rounded-full bg-brand-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-brand-600"
+            >
+              Add to #{notice.channelName}
+            </button>
+          )}
+          <button
+            onClick={() => setNotice(null)}
+            className="shrink-0 rounded-full px-2 py-1 text-xs font-medium text-ink-faint transition hover:bg-surface-2 hover:text-ink"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <div className="relative flex items-end gap-2 rounded-[26px] border border-line bg-canvas px-3 py-2 shadow-floating transition focus-within:border-brand-400">
         {/* @mention autocomplete */}
         {menuOpen && (

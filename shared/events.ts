@@ -42,6 +42,12 @@ export interface ClientToServerEvents {
     payload: { channelId: ID },
     ack: (res: Result<Channel>) => void,
   ) => void;
+  // Add other people to a channel (e.g. after @mentioning a non-member) — the
+  // "Add them to the channel?" action. Returns the updated channel.
+  "channel:addMembers": (
+    payload: { channelId: ID; userIds: ID[] },
+    ack: (res: Result<Channel>) => void,
+  ) => void;
   // Loads one page of a channel's messages. Omit `before` for the most recent
   // page (initial open); pass the oldest loaded cursor to page backwards.
   "channel:history": (
@@ -55,6 +61,9 @@ export interface ClientToServerEvents {
     ack: (res: Result<MessageWindow>) => void,
   ) => void;
   "dm:open": (payload: { userId: ID }, ack: (res: Result<Channel>) => void) => void;
+  // Open (or create) a multi-person direct message with the given people (you're
+  // always included). Reuses an existing DM with the exact same set.
+  "dm:openGroup": (payload: { userIds: ID[] }, ack: (res: Result<Channel>) => void) => void;
   "typing:start": (payload: { channelId: ID }) => void;
   "typing:stop": (payload: { channelId: ID }) => void;
   "channel:read": (payload: { channelId: ID }) => void;

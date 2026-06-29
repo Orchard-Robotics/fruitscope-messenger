@@ -64,6 +64,10 @@ const createSchema = z.object({
   isPrivate: z.boolean().optional(),
 });
 const channelRef = z.object({ channelId: z.string().min(1) });
+const addMembersSchema = z.object({
+  channelId: z.string().min(1),
+  userIds: z.array(z.string().min(1)).min(1).max(50),
+});
 const historySchema = z.object({
   channelId: z.string().min(1),
   before: z.object({ createdAt: z.number().positive(), id: z.string().min(1) }).optional(),
@@ -73,6 +77,9 @@ const aroundSchema = z.object({
   cursor: z.object({ createdAt: z.number().positive(), id: z.string().min(1) }),
 });
 const dmSchema = z.object({ userId: z.string().min(1) });
+const openGroupSchema = z.object({
+  userIds: z.array(z.string().min(1)).min(1).max(8),
+});
 
 const HISTORY_PAGE = 30;
 /** Messages loaded on each side of a jump target. */
@@ -272,6 +279,35 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     ack({ ok: true, data: updated });
   });
 
+  // Add other people to a channel ("Add them to the channel?" after an @mention).
+  socket.on("channel:addMembers", async (payload, ack) => {
+    const parsed = addMembersSchema.safeParse(payload);
+    if (!parsed.success) return ack({ ok: false, error: "Invalid request" });
+
+    const channel = await channels.byId(parsed.data.channelId);
+    if (!channel || !canAccess(channel, userId, orchardId)) {
+      return ack({ ok: false, error: "Channel not found" });
+    }
+    if (channel.kind !== "channel") {
+      return ack({ ok: false, error: "You can't add people to a direct message" });
+    }
+
+    for (const uid of parsed.data.userIds) {
+      if (uid === userId) continue;
+      if (!(await orchards.isMember(orchardId, uid))) continue;
+      await channels.addMember(channel.id, uid);
+    }
+    const updated = (await channels.byId(channel.id)) ?? channel;
+
+    // Newly-added members join the room and see the channel in their sidebar.
+    for (const uid of parsed.data.userIds) {
+      void io.in(userRoom(orchardId, uid)).socketsJoin(chanRoom(channel.id));
+      io.to(userRoom(orchardId, uid)).emit("channel:created", updated);
+    }
+    io.to(chanRoom(channel.id)).emit("channel:updated", updated);
+    ack({ ok: true, data: updated });
+  });
+
   socket.on("dm:open", async (payload, ack) => {
     const parsed = dmSchema.safeParse(payload);
     if (!parsed.success) return ack({ ok: false, error: "Invalid user" });
@@ -312,6 +348,39 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     });
 
     for (const member of [userId, otherId]) {
+      void io.in(userRoom(orchardId, member)).socketsJoin(chanRoom(channel.id));
+      io.to(userRoom(orchardId, member)).emit("channel:created", channel);
+    }
+    ack({ ok: true, data: channel });
+  });
+
+  // Multi-person (group) DM — like Slack's "new message" to several people.
+  socket.on("dm:openGroup", async (payload, ack) => {
+    const parsed = openGroupSchema.safeParse(payload);
+    if (!parsed.success) return ack({ ok: false, error: "Invalid request" });
+
+    const others = [...new Set(parsed.data.userIds)].filter((id) => id !== userId);
+    if (others.length === 0) return ack({ ok: false, error: "Pick at least one person" });
+    for (const id of others) {
+      if (!(await orchards.isMember(orchardId, id))) {
+        return ack({ ok: false, error: "Everyone must be in this orchard" });
+      }
+    }
+
+    const memberIds = [userId, ...others];
+    const existing = await channels.findByMembers(orchardId, memberIds);
+    if (existing) return ack({ ok: true, data: existing });
+
+    const channel = await channels.create({
+      orchardId,
+      kind: "dm",
+      name: "",
+      isPrivate: true,
+      createdBy: userId,
+      memberIds,
+    });
+
+    for (const member of memberIds) {
       void io.in(userRoom(orchardId, member)).socketsJoin(chanRoom(channel.id));
       io.to(userRoom(orchardId, member)).emit("channel:created", channel);
     }
