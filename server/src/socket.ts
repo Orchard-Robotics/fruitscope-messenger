@@ -68,9 +68,15 @@ const historySchema = z.object({
   channelId: z.string().min(1),
   before: z.object({ createdAt: z.number().positive(), id: z.string().min(1) }).optional(),
 });
+const aroundSchema = z.object({
+  channelId: z.string().min(1),
+  cursor: z.object({ createdAt: z.number().positive(), id: z.string().min(1) }),
+});
 const dmSchema = z.object({ userId: z.string().min(1) });
 
 const HISTORY_PAGE = 30;
+/** Messages loaded on each side of a jump target. */
+const AROUND_HALF = 20;
 
 /* -------------------------------- typing ----------------------------------- */
 
@@ -271,7 +277,24 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     if (!parsed.success) return ack({ ok: false, error: "Invalid user" });
 
     const otherId = parsed.data.userId;
-    if (otherId === userId) return ack({ ok: false, error: "You can't DM yourself" });
+
+    // Message yourself: a DM whose only member is you (Slack's notes space).
+    if (otherId === userId) {
+      const existing = await channels.findSelfDm(orchardId, userId);
+      if (existing) return ack({ ok: true, data: existing });
+      const selfDm = await channels.create({
+        orchardId,
+        kind: "dm",
+        name: "",
+        isPrivate: true,
+        createdBy: userId,
+        memberIds: [userId],
+      });
+      void io.in(userRoom(orchardId, userId)).socketsJoin(chanRoom(selfDm.id));
+      io.to(userRoom(orchardId, userId)).emit("channel:created", selfDm);
+      return ack({ ok: true, data: selfDm });
+    }
+
     if (!(await orchards.isMember(orchardId, otherId))) {
       return ack({ ok: false, error: "User is not in this orchard" });
     }
@@ -308,6 +331,18 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
       limit: HISTORY_PAGE,
     });
     ack({ ok: true, data: page });
+  });
+
+  socket.on("channel:around", async (payload, ack) => {
+    const parsed = aroundSchema.safeParse(payload);
+    if (!parsed.success) return ack({ ok: false, error: "Invalid request" });
+
+    const channel = await channels.byId(parsed.data.channelId);
+    if (!channel || !canAccess(channel, userId, orchardId)) {
+      return ack({ ok: false, error: "Channel not found" });
+    }
+    const window = await messages.around(channel.id, parsed.data.cursor, AROUND_HALF);
+    ack({ ok: true, data: window });
   });
 
   socket.on("typing:start", (payload) => {

@@ -22,6 +22,8 @@
 
   /* Surfaces */
   --color-canvas: #ffffff;
+  /* "raised" = elevated cards/modals/inputs (white in light, dark grey in dark). */
+  --color-raised: #ffffff;
   --color-surface: #f7f7f7;
   --color-surface-2: #ededed;
   --color-line: #e0e0e0;
@@ -41,6 +43,51 @@
 
   --radius-xl: 1rem;
   --radius-2xl: 1.25rem;
+}
+
+/* ----------------------------------------------------------------------- */
+/* Dark theme. Token-based: overriding the color variables under `.dark`    */
+/* re-themes every utility (bg-canvas, text-ink, …) with no component churn. */
+/* `text-white` and the brand button greens intentionally stay constant.    */
+/* ----------------------------------------------------------------------- */
+html.dark {
+  color-scheme: dark;
+
+  --color-canvas: #16181d;
+  --color-raised: #21242b;
+  --color-surface: #1d2026;
+  --color-surface-2: #2a2e36;
+  --color-line: #343a44;
+
+  --color-ink: #e7e9ee;
+  --color-ink-dim: #b2b7c0;
+  --color-ink-faint: #7c828d;
+
+  /* Mint tints used as solid light backgrounds become dark mint in dark mode. */
+  --color-brand-50: #16241d;
+  --color-brand-100: #1b3026;
+  --color-brand-200: #244433;
+  /* Lift the darker greens so text-brand-600/700 stay legible on dark. */
+  --color-brand-600: #5fb78a;
+  --color-brand-700: #84d3ac;
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --shadow-floating: 0 2px 6px rgba(0, 0, 0, 0.55), 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+html.dark *::-webkit-scrollbar-thumb {
+  background: #3a4049;
+  background-clip: content-box;
+}
+html.dark * {
+  scrollbar-color: #3a4049 transparent;
+}
+
+/* Compact density — tighten message rows (Slack's "compact" theme). */
+html[data-compact] [data-msg] {
+  margin-top: 0.125rem;
+  padding-top: 0.0625rem;
+  padding-bottom: 0.0625rem;
 }
 
 @layer base {
@@ -100,7 +147,7 @@
     rgba(100, 200, 150, 0.34) 0%,
     rgba(100, 200, 150, 0.2) 36%,
     rgba(100, 200, 150, 0.07) 68%,
-    #ffffff 100%
+    transparent 100%
   );
 }
 
@@ -216,4 +263,14 @@
   .glow-breathe::before {
     animation: none;
   }
+}
+
+/* Manual "Reduce motion" preference (mirrors the media query above). */
+html[data-reduce-motion] .anim-fade-in,
+html[data-reduce-motion] .anim-rise-in,
+html[data-reduce-motion] .anim-card-in,
+html[data-reduce-motion] .anim-pop-in,
+html[data-reduce-motion] .typing-dot,
+html[data-reduce-motion] .glow-breathe::before {
+  animation: none;
 }

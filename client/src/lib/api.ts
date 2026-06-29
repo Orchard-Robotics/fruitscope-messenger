@@ -1,4 +1,4 @@
-import type { Bootstrap, Orchard, User } from "@shared/index";
+import type { Bootstrap, Message, Orchard, User } from "@shared/index";
 
 /** Full-page navigation target that starts the "Sign in with FruitScope" flow. */
 export const LOGIN_URL = "/api/auth/login";
@@ -24,6 +24,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const rest = {
   me: () => request<User>("/me"),
   bootstrap: () => request<Bootstrap>("/bootstrap"),
+  /** Server-side message search across the orchard's accessible channels. */
+  search: (q: string) =>
+    request<{ messages: Message[] }>(`/search?q=${encodeURIComponent(q)}`),
   /** Upload a new profile picture (multipart); returns the updated user. */
   uploadAvatar: async (file: File): Promise<User> => {
     const form = new FormData();

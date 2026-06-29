@@ -87,7 +87,7 @@ export function OrchardSwitcher({ onlineCount }: { onlineCount: number }) {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-40 mt-1 max-h-80 w-64 overflow-y-auto rounded-xl border border-line bg-white p-1.5 shadow-floating">
+        <div className="absolute left-0 top-full z-40 mt-1 max-h-80 w-64 overflow-y-auto rounded-xl border border-line bg-raised p-1.5 shadow-floating">
           <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-ink-faint">
             Switch workspace
           </p>

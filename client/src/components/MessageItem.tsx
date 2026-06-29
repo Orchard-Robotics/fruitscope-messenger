@@ -16,9 +16,11 @@ interface MessageItemProps {
   author: User | undefined;
   showHeader: boolean;
   meId: ID;
+  /** Briefly highlighted after jumping to it from search. */
+  highlighted?: boolean;
 }
 
-export function MessageItem({ message, author, showHeader, meId }: MessageItemProps) {
+export function MessageItem({ message, author, showHeader, meId, highlighted }: MessageItemProps) {
   const [picking, setPicking] = useState(false);
 
   const react = (emoji: string) => {
@@ -28,9 +30,11 @@ export function MessageItem({ message, author, showHeader, meId }: MessageItemPr
 
   return (
     <div
+      data-msg
       className={cn(
-        "anim-rise-in group relative flex gap-3 px-4 hover:bg-surface",
+        "group relative flex gap-3 px-4 transition-colors duration-1000",
         showHeader ? "mt-3 pt-1" : "py-0.5",
+        highlighted ? "bg-amber-100" : "anim-rise-in hover:bg-surface",
       )}
     >
       <div className="w-10 shrink-0">
@@ -82,7 +86,7 @@ export function MessageItem({ message, author, showHeader, meId }: MessageItemPr
         <div className="relative">
           <button
             onClick={() => setPicking((v) => !v)}
-            className="grid size-8 place-items-center rounded-lg border border-line bg-white text-ink-dim shadow-sm transition hover:text-brand-600"
+            className="grid size-8 place-items-center rounded-lg border border-line bg-raised text-ink-dim shadow-sm transition hover:text-brand-600"
             title="Add reaction"
           >
             <SmilePlus className="size-4" />
@@ -91,7 +95,7 @@ export function MessageItem({ message, author, showHeader, meId }: MessageItemPr
           {picking && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setPicking(false)} />
-              <div className="anim-pop-in absolute right-0 top-9 z-20 flex gap-1 rounded-xl border border-line bg-white p-1.5 shadow-lg">
+              <div className="anim-pop-in absolute right-0 top-9 z-20 flex gap-1 rounded-xl border border-line bg-raised p-1.5 shadow-lg">
                 {REACTION_EMOJI.map((emoji) => (
                   <button
                     key={emoji}

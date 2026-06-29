@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ID, User } from "@shared/index";
 import { REACTION_EMOJI } from "@shared/index";
 import { cn } from "@/lib/cn";
+import { resetToLatest } from "@/lib/jump";
 import { detectMentionQuery, encodeMentions, type MentionQuery } from "@/lib/mentions";
 import { chat } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
@@ -130,7 +131,13 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
     setMention(null);
     stopTyping();
     const res = await chat.send(channelId, content);
-    if (!res.ok) setText(trimmed);
+    if (!res.ok) {
+      setText(trimmed);
+    } else if (useChatStore.getState().detached[channelId]) {
+      // Sending from a jumped-to (historical) view snaps back to live so the
+      // message is visible at the bottom.
+      void resetToLatest(channelId);
+    }
     textareaRef.current?.focus();
   };
 
@@ -139,7 +146,7 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
       <div className="relative flex items-end gap-2 rounded-[26px] border border-line bg-canvas px-3 py-2 shadow-floating transition focus-within:border-brand-400">
         {/* @mention autocomplete */}
         {menuOpen && (
-          <div className="anim-pop-in absolute bottom-full left-2 z-30 mb-2 w-80 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-floating">
+          <div className="anim-pop-in absolute bottom-full left-2 z-30 mb-2 w-80 overflow-hidden rounded-xl border border-line bg-raised py-1 shadow-floating">
             <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
               People
             </p>
@@ -164,7 +171,7 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
                       <PresenceDot
                         status={u.status}
                         className="absolute -bottom-1 -right-1 size-2"
-                        ring="ring-white"
+                        ring="ring-raised"
                       />
                     </span>
                     <span className="truncate font-medium text-ink">{u.displayName}</span>
@@ -187,7 +194,7 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
           {emojiOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setEmojiOpen(false)} />
-              <div className="anim-pop-in absolute bottom-12 left-0 z-20 flex gap-1 rounded-xl border border-line bg-white p-1.5 shadow-lg">
+              <div className="anim-pop-in absolute bottom-12 left-0 z-20 flex gap-1 rounded-xl border border-line bg-raised p-1.5 shadow-lg">
                 {REACTION_EMOJI.map((emoji) => (
                   <button
                     key={emoji}

@@ -23,7 +23,7 @@ export function Login({ error }: { error?: string | null }) {
 
   return (
     <div className="glow glow-breathe relative grid min-h-dvh place-items-center overflow-hidden px-6">
-      <div className="anim-card-in relative z-10 w-full max-w-md rounded-3xl border border-line bg-white p-8 shadow-floating">
+      <div className="anim-card-in relative z-10 w-full max-w-md rounded-3xl border border-line bg-raised p-8 shadow-floating">
         <div className="mb-7 flex items-center gap-3">
           <Logo className="size-12" />
           <div>

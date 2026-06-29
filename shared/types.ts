@@ -106,6 +106,17 @@ export interface MessagePage {
   hasMore: boolean;
 }
 
+/**
+ * A window of messages centered on a target (for jumping to a search result):
+ * some older messages, the target, and some newer ones, oldest-first — plus
+ * whether more exist on each side.
+ */
+export interface MessageWindow {
+  messages: Message[];
+  hasBefore: boolean;
+  hasAfter: boolean;
+}
+
 /** Discriminated result returned through Socket.IO acknowledgements. */
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
