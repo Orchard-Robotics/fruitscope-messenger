@@ -46,6 +46,13 @@ resource "google_compute_url_map" "default" {
       paths   = ["/api", "/api/*", "/socket.io", "/socket.io/*", "/health"]
       service = google_compute_backend_service.default.id
     }
+
+    # Uploaded media (profile pictures) → the CDN-backed media bucket, served
+    # directly to the browser (never through Cloud Run).
+    path_rule {
+      paths   = ["/avatars/*"]
+      service = google_compute_backend_bucket.media.id
+    }
   }
 }
 

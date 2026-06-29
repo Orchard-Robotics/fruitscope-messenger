@@ -51,6 +51,10 @@ model User {
   // orchard-robotics namespace and may switch into any other orchard.
   isSuperAdmin Boolean @default(false)
   hue         Int
+  // GCS object key of the uploaded profile picture (e.g. "avatars/<id>-<rand>.webp"),
+  // or null for none. The public URL is built from MEDIA_PUBLIC_BASE at read time
+  // so storage/CDN host changes don't require a data migration.
+  avatarKey   String?
   status      String   @default("offline")
   createdAt   DateTime @default(now())
 

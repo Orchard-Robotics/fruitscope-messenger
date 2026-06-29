@@ -7,6 +7,7 @@ import type {
   ID,
   ServerToClientEvents,
   SocketData,
+  User,
 } from "@shared/index";
 import { REACTION_EMOJI } from "@shared/index";
 import { resolveToken } from "./auth";
@@ -27,6 +28,9 @@ type IOSocket = Socket<
   InterServerEvents,
   SocketData
 >;
+
+/* Set once on attach, so non-socket code (HTTP routes) can broadcast too. */
+let ioRef: IOServer | null = null;
 
 /* Rooms are namespaced by orchard so broadcasts never cross tenants. */
 const orchRoom = (orchardId: ID): string => `orch:${orchardId}`;
@@ -146,7 +150,19 @@ async function onDisconnect(io: IOServer, socket: IOSocket, userId: ID, orchardI
 
 /* ------------------------------ wiring ------------------------------------- */
 
+/**
+ * Broadcast a changed user (e.g. a new profile picture) to everyone who shares
+ * an orchard with them, so avatars update live. Safe to call from HTTP routes.
+ */
+export async function broadcastUserUpdate(user: User): Promise<void> {
+  if (!ioRef) return;
+  for (const orchard of await orchards.forUser(user.id)) {
+    ioRef.to(orchRoom(orchard.id)).emit("user:upserted", user);
+  }
+}
+
 export function attachSockets(io: IOServer): void {
+  ioRef = io;
   io.use((socket, next) => {
     void (async () => {
       try {

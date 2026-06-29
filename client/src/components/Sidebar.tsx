@@ -11,6 +11,7 @@ import { CreateChannelModal } from "./CreateChannelModal";
 import { Logo } from "./Logo";
 import { OrchardSwitcher } from "./OrchardSwitcher";
 import { PresenceDot } from "./PresenceDot";
+import { ProfileModal } from "./ProfileModal";
 
 export function Sidebar({
   navOpen = false,
@@ -28,6 +29,7 @@ export function Sidebar({
 
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
 
   const channelList = useMemo(
     () =>
@@ -150,24 +152,31 @@ export function Sidebar({
       </nav>
 
       <footer className="flex items-center gap-3 border-t border-line px-3 py-3">
-        <div className="relative">
-          <Avatar user={me} size={36} />
-          <PresenceDot status={me.status} className="absolute -bottom-0.5 -right-0.5" ring="ring-surface" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-ink">{me.displayName}</p>
-          <p className="truncate text-xs text-ink-faint">@{me.username}</p>
-        </div>
+        <button
+          onClick={() => setEditingProfile(true)}
+          title="Edit profile picture"
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 -m-1 text-left transition hover:bg-surface-2"
+        >
+          <div className="relative">
+            <Avatar user={me} size={36} />
+            <PresenceDot status={me.status} className="absolute -bottom-0.5 -right-0.5" ring="ring-surface" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-ink">{me.displayName}</p>
+            <p className="truncate text-xs text-ink-faint">@{me.username}</p>
+          </div>
+        </button>
         <button
           onClick={() => void signOut()}
           title="Sign out"
-          className="grid size-9 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2 hover:text-danger"
+          className="grid size-9 shrink-0 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2 hover:text-danger"
         >
           <LogOut className="size-4" />
         </button>
       </footer>
 
       <CreateChannelModal open={creating} onClose={() => setCreating(false)} />
+      <ProfileModal open={editingProfile} onClose={() => setEditingProfile(false)} />
     </aside>
   );
 }

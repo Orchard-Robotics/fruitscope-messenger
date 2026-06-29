@@ -1,4 +1,7 @@
 import { Router } from "express";
+import multer from "multer";
+import sharp from "sharp";
+import { nanoid } from "nanoid";
 import { z } from "zod";
 
 import type { Orchard } from "@shared/index";
@@ -21,7 +24,9 @@ import {
 } from "./env";
 import type { FruitscopeIdentity } from "./oidc";
 import { beginLogin, completeLogin, decodeTx, encodeTx } from "./oidc";
+import { broadcastUserUpdate } from "./socket";
 import { bootstrap, orchards, users } from "./store";
+import { deleteObject, uploadObject } from "./storage";
 
 export const api: Router = Router();
 
@@ -167,6 +172,84 @@ api.get("/me", requireAuth, async (req, res) => {
     res.status(404).json({ error: "Not found" });
     return;
   }
+  res.json(user);
+});
+
+/* ------------------------------------------------------------------ */
+/* Profile picture                                                     */
+/* Server-side upload: validate → normalize (square 512 webp, EXIF     */
+/* stripped) → store in GCS. Clients then read it straight from the    */
+/* CDN/emulator (never through this backend).                          */
+/* ------------------------------------------------------------------ */
+
+const AVATAR_MAX_BYTES = 8 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const uploadAvatarFile = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: AVATAR_MAX_BYTES },
+}).single("file");
+
+api.post("/me/avatar", requireAuth, (req, res) => {
+  uploadAvatarFile(req, res, async (err: unknown) => {
+    if (err) {
+      const tooBig = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
+      res.status(400).json({ error: tooBig ? "Image too large (max 8MB)" : "Upload failed" });
+      return;
+    }
+
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "No image provided" });
+      return;
+    }
+    if (!ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
+      res.status(400).json({ error: "Unsupported image type (use JPEG, PNG, WebP or GIF)" });
+      return;
+    }
+
+    // Normalize: honor EXIF orientation, square-crop, cap at 512px, re-encode to
+    // WebP. Re-encoding also strips metadata (incl. location) and any payload
+    // hidden in a non-image upload — sharp throws on anything that isn't an image.
+    let webp: Buffer;
+    try {
+      webp = await sharp(file.buffer)
+        .rotate()
+        .resize(512, 512, { fit: "cover", position: "centre" })
+        .webp({ quality: 82 })
+        .toBuffer();
+    } catch {
+      res.status(400).json({ error: "That file isn't a valid image" });
+      return;
+    }
+
+    const { userId } = (req as AuthedRequest).scope;
+    // Unique key per upload → the URL changes on every change, so the immutable
+    // CDN cache never serves a stale picture.
+    const key = `avatars/${userId}-${nanoid(8)}.webp`;
+    try {
+      await uploadObject(key, webp, "image/webp");
+    } catch (uploadErr) {
+      console.error("[avatar] upload failed:", uploadErr);
+      res.status(502).json({ error: "Couldn't store the image, try again" });
+      return;
+    }
+
+    const prevKey = await users.avatarKey(userId);
+    const user = await users.setAvatarKey(userId, key);
+    // Drop the previous object (best-effort; a leak here is harmless).
+    if (prevKey && prevKey !== key) await deleteObject(prevKey).catch(() => {});
+
+    void broadcastUserUpdate(user); // live avatar update for everyone in-orchard
+    res.json(user);
+  });
+});
+
+api.delete("/me/avatar", requireAuth, async (req, res) => {
+  const { userId } = (req as AuthedRequest).scope;
+  const prevKey = await users.avatarKey(userId);
+  const user = await users.setAvatarKey(userId, null);
+  if (prevKey) await deleteObject(prevKey).catch(() => {});
+  void broadcastUserUpdate(user);
   res.json(user);
 });
 

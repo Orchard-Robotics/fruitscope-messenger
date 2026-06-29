@@ -24,6 +24,24 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const rest = {
   me: () => request<User>("/me"),
   bootstrap: () => request<Bootstrap>("/bootstrap"),
+  /** Upload a new profile picture (multipart); returns the updated user. */
+  uploadAvatar: async (file: File): Promise<User> => {
+    const form = new FormData();
+    form.append("file", file);
+    // No Content-Type header — the browser sets the multipart boundary itself.
+    const res = await fetch("/api/me/avatar", {
+      method: "POST",
+      credentials: "same-origin",
+      body: form,
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? `Upload failed (${res.status})`);
+    }
+    return res.json() as Promise<User>;
+  },
+  /** Remove the current profile picture; returns the updated user. */
+  removeAvatar: () => request<User>("/me/avatar", { method: "DELETE" }),
   /** Orchards the current user can switch into (all for super admins). */
   orchards: () => request<Orchard[]>("/orchards"),
   switchOrchard: (orchardId: string) =>

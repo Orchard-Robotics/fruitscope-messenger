@@ -82,6 +82,19 @@ resource "google_cloud_run_v2_service" "verdant" {
         }
       }
 
+      # Profile pictures: upload to the media bucket (via ADC); the public URL is
+      # built as ${MEDIA_PUBLIC_BASE}/<key>, served by the CDN under /avatars/*.
+      # No GCS_EMULATOR_HOST in prod → real GCS.
+      env {
+        name  = "GCS_MEDIA_BUCKET"
+        value = google_storage_bucket.media.name
+      }
+
+      env {
+        name  = "MEDIA_PUBLIC_BASE"
+        value = "https://${var.domain}"
+      }
+
       volume_mounts {
         name       = "cloudsql"
         mount_path = "/cloudsql"
@@ -101,6 +114,7 @@ resource "google_cloud_run_v2_service" "verdant" {
     google_secret_manager_secret_version.database_url,
     google_secret_manager_secret_iam_member.runtime_db_url,
     google_secret_manager_secret_iam_member.runtime_oidc_secret,
+    google_storage_bucket_iam_member.media_writer,
   ]
 }
 

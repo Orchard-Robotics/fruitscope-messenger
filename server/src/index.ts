@@ -11,15 +11,27 @@ import type {
   ServerToClientEvents,
   SocketData,
 } from "@shared/index";
-import { isProd, oidcConfigured, PORT } from "./env";
+import { isProd, oidcConfigured, PORT, usingGcsEmulator } from "./env";
 import { api } from "./http";
 import { prisma } from "./prisma";
 import { attachSockets } from "./socket";
+import { ensureMediaBucket } from "./storage";
 
 if (isProd && !oidcConfigured) {
   console.warn(
     "⚠️  OIDC_CLIENT_SECRET is not set — 'Sign in with FruitScope' is disabled until it is configured.",
   );
+}
+
+// Local dev: create the media bucket in the fake-gcs emulator if it's missing.
+// (In prod the bucket is provisioned by Terraform.)
+if (usingGcsEmulator) {
+  try {
+    await ensureMediaBucket();
+    console.log("🪣  Media bucket ready (fake-gcs emulator)");
+  } catch (err) {
+    console.warn("⚠️  Could not ensure the media bucket (avatar uploads may fail):", err);
+  }
 }
 
 const app = express();
