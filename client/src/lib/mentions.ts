@@ -41,6 +41,15 @@ export function contentMentions(content: string, userId: string): boolean {
   return false;
 }
 
+/** Unique user ids mentioned in stored content. */
+export function mentionedIds(content: string): string[] {
+  const ids = new Set<string>();
+  for (const m of content.matchAll(tokenRe())) {
+    if (m[1]) ids.add(m[1]);
+  }
+  return [...ids];
+}
+
 /**
  * Encode typed `@username` mentions to `<@userId>` tokens for storage, matching
  * against the orchard's members. Resolves the longest valid username so trailing
