@@ -10,6 +10,7 @@ import type {
   User,
   UserStatus,
 } from "@shared/index";
+import { contentMentions } from "@/lib/mentions";
 
 export type SessionStatus = "loading" | "anon" | "ready";
 
@@ -36,6 +37,8 @@ interface ChatState {
   activeChannelId: ID | null;
   typing: Record<ID, ID[]>;
   unread: Record<ID, number>;
+  /** Channels with an unread message that @mentions me (Slack-style emphasis). */
+  mentions: Record<ID, boolean>;
 
   /* session actions */
   signIn: (me: User) => void;
@@ -95,6 +98,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeChannelId: null,
   typing: {},
   unread: {},
+  mentions: {},
 
   // Sets identity but keeps `session` as-is; `loadBootstrap` flips to "ready"
   // once data has arrived so the workspace never flashes empty.
@@ -117,6 +121,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       activeChannelId: null,
       typing: {},
       unread: {},
+      mentions: {},
     }),
 
   setSession: (session) => set({ session }),
@@ -169,12 +174,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       const isActive = s.activeChannelId === message.channelId;
       const mine = message.authorId === s.me?.id;
-      const unread =
-        !isActive && !mine
-          ? { ...s.unread, [message.channelId]: (s.unread[message.channelId] ?? 0) + 1 }
-          : s.unread;
+      const countsAsUnread = !isActive && !mine;
+      const unread = countsAsUnread
+        ? { ...s.unread, [message.channelId]: (s.unread[message.channelId] ?? 0) + 1 }
+        : s.unread;
+      // Flag the channel if this unread message @mentions me (Slack-style).
+      const mentionsMe =
+        countsAsUnread && s.me ? contentMentions(message.content, s.me.id) : false;
+      const mentions = mentionsMe
+        ? { ...s.mentions, [message.channelId]: true }
+        : s.mentions;
 
-      return { messages: { ...s.messages, [message.channelId]: next }, unread, historyComplete };
+      return {
+        messages: { ...s.messages, [message.channelId]: next },
+        unread,
+        mentions,
+        historyComplete,
+      };
     }),
 
   updateMessage: (message) =>
@@ -222,7 +238,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const prev = get().activeChannelId;
     if (prev === channelId) return;
     set((s) => {
-      const base = { activeChannelId: channelId, unread: { ...s.unread, [channelId]: 0 } };
+      const base = {
+        activeChannelId: channelId,
+        unread: { ...s.unread, [channelId]: 0 },
+        mentions: { ...s.mentions, [channelId]: false },
+      };
       // Free the deep-scroll history of the channel we're leaving, keeping only a
       // recent window so re-opening still shows context instantly.
       const leaving = prev ? s.messages[prev] : undefined;

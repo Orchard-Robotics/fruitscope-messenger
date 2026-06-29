@@ -24,6 +24,7 @@ export function Sidebar({
   const users = useChatStore((s) => s.users);
   const channels = useChatStore((s) => s.channels);
   const unread = useChatStore((s) => s.unread);
+  const mentions = useChatStore((s) => s.mentions);
   const activeChannelId = useChatStore((s) => s.activeChannelId);
   const setActiveChannel = useChatStore((s) => s.setActiveChannel);
 
@@ -123,6 +124,7 @@ export function Sidebar({
                 channel={c}
                 active={c.id === activeChannelId}
                 unread={unread[c.id] ?? 0}
+                mentioned={mentions[c.id] ?? false}
                 onClick={() => select(c.id)}
               />
             ))}
@@ -142,6 +144,7 @@ export function Sidebar({
                   person={person}
                   active={dm?.id === activeChannelId}
                   unread={dmUnread}
+                  mentioned={dm ? (mentions[dm.id] ?? false) : false}
                   onClick={() => void openDm(person.id)}
                 />
               );
@@ -208,11 +211,13 @@ function ChannelRow({
   channel,
   active,
   unread,
+  mentioned,
   onClick,
 }: {
   channel: Channel;
   active: boolean;
   unread: number;
+  mentioned: boolean;
   onClick: () => void;
 }) {
   const Icon = channel.isPrivate ? Lock : Hash;
@@ -233,7 +238,7 @@ function ChannelRow({
         <span className={cn("truncate", unread > 0 && !active && "font-semibold text-ink")}>
           {channel.name}
         </span>
-        {unread > 0 && <UnreadBadge count={unread} />}
+        {unread > 0 && <UnreadBadge count={unread} mentioned={mentioned} />}
       </button>
     </li>
   );
@@ -243,11 +248,13 @@ function PersonRow({
   person,
   active,
   unread,
+  mentioned,
   onClick,
 }: {
   person: User;
   active: boolean;
   unread: number;
+  mentioned: boolean;
   onClick: () => void;
 }) {
   return (
@@ -270,16 +277,22 @@ function PersonRow({
         <span className={cn("truncate", unread > 0 && "font-semibold text-ink")}>
           {person.displayName}
         </span>
-        {unread > 0 && <UnreadBadge count={unread} />}
+        {unread > 0 && <UnreadBadge count={unread} mentioned={mentioned} />}
       </button>
     </li>
   );
 }
 
-function UnreadBadge({ count }: { count: number }) {
+// A mention shows a red badge (Slack-style); plain unread stays brand green.
+function UnreadBadge({ count, mentioned }: { count: number; mentioned: boolean }) {
   return (
-    <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-brand-500 px-1.5 text-xs font-bold text-white">
-      {count > 99 ? "99+" : count}
+    <span
+      className={cn(
+        "ml-auto grid min-w-5 place-items-center rounded-full px-1.5 text-xs font-bold text-white",
+        mentioned ? "bg-danger" : "bg-brand-500",
+      )}
+    >
+      {(mentioned ? "@" : "") + (count > 99 ? "99+" : count)}
     </span>
   );
 }
