@@ -108,7 +108,7 @@ export function CreateChannelModal({ open, onClose }: { open: boolean; onClose: 
           >
             <span
               className={cn(
-                "absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition",
+                "absolute top-0.5 size-5 rounded-full bg-raised shadow-sm transition",
                 isPrivate ? "left-[22px]" : "left-0.5",
               )}
             />

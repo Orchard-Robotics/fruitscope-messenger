@@ -1,8 +1,10 @@
+import { ArrowDown } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
 import type { ID, Message } from "@shared/index";
 import { dayLabel, isNewDay } from "@/lib/format";
+import { resetToLatest } from "@/lib/jump";
 import { chat } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
 import { Logo } from "./Logo";
@@ -27,8 +29,14 @@ export function MessageList({ channelId }: { channelId: ID }) {
   const meId = useChatStore((s) => s.me?.id ?? "");
   const setInitialPage = useChatStore((s) => s.setInitialPage);
   const prependPage = useChatStore((s) => s.prependPage);
+  const detached = useChatStore((s) => s.detached[channelId] ?? false);
+  // Set on (re)mount; the list is keyed by jump token so a jump remounts it.
+  const jumpMessageId = useChatStore((s) =>
+    s.jumpTarget?.channelId === channelId ? s.jumpTarget.messageId : null,
+  );
 
   const virtuoso = useRef<VirtuosoHandle>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(jumpMessageId);
   const [firstItemIndex, setFirstItemIndex] = useState(START_INDEX);
   const atBottom = useRef(true);
   const loadingOlder = useRef(false);
@@ -90,6 +98,19 @@ export function MessageList({ channelId }: { channelId: ID }) {
     loadingOlder.current = false;
   }, [channelId, messages, historyComplete, prependPage]);
 
+  // The list remounts (keyed by jump token) when jumping to a search result, so
+  // this runs once per jump: fade out the highlight after a moment.
+  useEffect(() => {
+    if (!jumpMessageId) return;
+    const t = setTimeout(() => setHighlightId(null), 2600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Where to open: centered on the jump target if any, else the latest message.
+  const jumpIndex = jumpMessageId ? messages.findIndex((m) => m.id === jumpMessageId) : -1;
+  const initialIndex = jumpIndex >= 0 ? jumpIndex : messages.length - 1;
+
   if (!hydrated) {
     return <div className="flex flex-1 items-center justify-center text-sm text-ink-faint">Loading…</div>;
   }
@@ -103,12 +124,13 @@ export function MessageList({ channelId }: { channelId: ID }) {
   }
 
   return (
+    <div className="relative flex flex-1 flex-col">
     <Virtuoso
       ref={virtuoso}
       className="flex-1"
       data={messages}
       firstItemIndex={firstItemIndex}
-      initialTopMostItemIndex={messages.length - 1}
+      initialTopMostItemIndex={initialIndex}
       startReached={() => void loadOlder()}
       followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
       atBottomStateChange={(b) => {
@@ -140,11 +162,21 @@ export function MessageList({ channelId }: { channelId: ID }) {
               author={users[message.authorId]}
               showHeader={!grouped}
               meId={meId}
+              highlighted={message.id === highlightId}
             />
           </>
         );
       }}
     />
+      {detached && (
+        <button
+          onClick={() => void resetToLatest(channelId)}
+          className="anim-pop-in absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-brand-500 px-3.5 py-1.5 text-sm font-medium text-white shadow-floating transition hover:bg-brand-600"
+        >
+          Jump to latest <ArrowDown className="size-4" />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -152,7 +184,7 @@ function DayDivider({ ts }: { ts: number }) {
   return (
     <div className="my-3 flex items-center gap-3 px-4">
       <span className="h-px flex-1 bg-line" />
-      <span className="rounded-full border border-line bg-white px-3 py-0.5 text-xs font-medium text-ink-dim">
+      <span className="rounded-full border border-line bg-raised px-3 py-0.5 text-xs font-medium text-ink-dim">
         {dayLabel(ts)}
       </span>
       <span className="h-px flex-1 bg-line" />

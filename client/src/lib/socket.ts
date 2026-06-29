@@ -7,6 +7,7 @@ import type {
   Message,
   MessageCursor,
   MessagePage,
+  MessageWindow,
   Result,
   ServerToClientEvents,
 } from "@shared/index";
@@ -121,6 +122,10 @@ export const chat = {
     withAck((cb) =>
       getSocket().emit("channel:history", { channelId, ...(before ? { before } : {}) }, cb),
     ),
+
+  /** Load a window of messages centered on a target (for jumping to a result). */
+  around: (channelId: ID, cursor: MessageCursor): Promise<Result<MessageWindow>> =>
+    withAck((cb) => getSocket().emit("channel:around", { channelId, cursor }, cb)),
 
   typingStart: (channelId: ID): void => {
     getSocket().emit("typing:start", { channelId });

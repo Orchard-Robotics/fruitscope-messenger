@@ -4,6 +4,7 @@ import type {
   Message,
   MessageCursor,
   MessagePage,
+  MessageWindow,
   Result,
   User,
   UserStatus,
@@ -46,6 +47,12 @@ export interface ClientToServerEvents {
   "channel:history": (
     payload: { channelId: ID; before?: MessageCursor },
     ack: (res: Result<MessagePage>) => void,
+  ) => void;
+  // Loads a window of messages centered on a target cursor — for jumping to a
+  // search result deep in history.
+  "channel:around": (
+    payload: { channelId: ID; cursor: MessageCursor },
+    ack: (res: Result<MessageWindow>) => void,
   ) => void;
   "dm:open": (payload: { userId: ID }, ack: (res: Result<Channel>) => void) => void;
   "typing:start": (payload: { channelId: ID }) => void;

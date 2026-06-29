@@ -25,7 +25,7 @@ import {
 import type { FruitscopeIdentity } from "./oidc";
 import { beginLogin, completeLogin, decodeTx, encodeTx } from "./oidc";
 import { broadcastUserUpdate } from "./socket";
-import { bootstrap, orchards, users } from "./store";
+import { bootstrap, channels, messages, orchards, users } from "./store";
 import { deleteObject, uploadObject } from "./storage";
 
 export const api: Router = Router();
@@ -256,6 +256,27 @@ api.delete("/me/avatar", requireAuth, async (req, res) => {
 api.get("/bootstrap", requireAuth, async (req, res) => {
   const { userId, orchardId } = (req as AuthedRequest).scope;
   res.json(await bootstrap(userId, orchardId));
+});
+
+/**
+ * Message search across the channels the user can see in their orchard.
+ * Channels/people are searched client-side (already in the store); this is the
+ * server-backed message half. Newest-first, capped.
+ */
+api.get("/search", requireAuth, async (req, res) => {
+  const { userId, orchardId } = (req as AuthedRequest).scope;
+  const q = (typeof req.query.q === "string" ? req.query.q : "").trim();
+  if (q.length < 2) {
+    res.json({ messages: [] });
+    return;
+  }
+  const visible = await channels.visibleTo(userId, orchardId);
+  const found = await messages.search(
+    visible.map((c) => c.id),
+    q,
+    25,
+  );
+  res.json({ messages: found });
 });
 
 /**

@@ -1,11 +1,12 @@
 import { Menu, MessageSquareHeart, WifiOff } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { channelTitle } from "@/lib/channel";
+import { channelTitle, isSelfDm } from "@/lib/channel";
 import { useChatStore } from "@/store/store";
 import { ChannelHeader } from "./ChannelHeader";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
+import { SearchModal } from "./SearchModal";
 import { Sidebar } from "./Sidebar";
 
 export function Workspace() {
@@ -14,14 +15,32 @@ export function Workspace() {
   const users = useChatStore((s) => s.users);
   const meId = useChatStore((s) => s.me?.id);
   const connected = useChatStore((s) => s.connected);
+  // A jump (search result) bumps this for the active channel; it's in the
+  // MessageList key so the list remounts centered on the target.
+  const jumpToken = useChatStore((s) =>
+    s.jumpTarget?.channelId === activeChannelId ? s.jumpTarget.token : 0,
+  );
 
   const [navOpen, setNavOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Cmd/Ctrl+K opens search (Slack's quick switcher shortcut).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const placeholder = useMemo(() => {
     if (!channel || !meId) return "Message";
-    return channel.kind === "channel"
-      ? `Message #${channel.name}`
-      : `Message ${channelTitle(channel, users, meId)}`;
+    if (channel.kind === "channel") return `Message #${channel.name}`;
+    if (isSelfDm(channel, meId)) return "Jot something down";
+    return `Message ${channelTitle(channel, users, meId)}`;
   }, [channel, users, meId]);
 
   return (
@@ -29,25 +48,31 @@ export function Workspace() {
       {/* Drawer backdrop (mobile only) */}
       {navOpen && (
         <div
-          className="fixed inset-0 z-20 bg-ink/30 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-20 bg-black/40 backdrop-blur-sm md:hidden"
           onClick={() => setNavOpen(false)}
         />
       )}
 
-      <Sidebar navOpen={navOpen} onNavigate={() => setNavOpen(false)} />
+      <Sidebar
+        navOpen={navOpen}
+        onNavigate={() => setNavOpen(false)}
+        onOpenSearch={() => setSearchOpen(true)}
+      />
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         {!connected && <ConnectionBanner />}
         {channel && activeChannelId ? (
           <>
             <ChannelHeader onOpenNav={() => setNavOpen(true)} />
-            <MessageList key={activeChannelId} channelId={activeChannelId} />
+            <MessageList key={`${activeChannelId}:${jumpToken}`} channelId={activeChannelId} />
             <Composer channelId={activeChannelId} placeholder={placeholder} />
           </>
         ) : (
           <EmptyState onOpenNav={() => setNavOpen(true)} />
         )}
       </main>
+
+      <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 }
@@ -64,7 +89,7 @@ function ConnectionBanner() {
 function EmptyState({ onOpenNav }: { onOpenNav: () => void }) {
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center border-b border-line bg-white/70 px-4 backdrop-blur-xl md:hidden">
+      <header className="flex h-16 shrink-0 items-center border-b border-line bg-raised/70 px-4 backdrop-blur-xl md:hidden">
         <button
           onClick={onOpenNav}
           className="grid size-9 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2"

@@ -25,11 +25,11 @@ export function Modal({
 
   return (
     <div className="anim-fade-in fixed inset-0 z-50 grid place-items-center p-4">
-      <div className="absolute inset-0 bg-ink/25 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
-        className="anim-card-in relative z-10 w-full max-w-md rounded-2xl border border-line bg-white p-6 shadow-2xl shadow-ink/10"
+        className="anim-card-in relative z-10 w-full max-w-md rounded-2xl border border-line bg-raised p-6 shadow-2xl shadow-ink/10"
       >
         <div className="mb-5 flex items-center justify-between">
           <h2 className="font-display text-lg font-bold text-ink">{title}</h2>

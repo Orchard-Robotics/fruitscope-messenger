@@ -6,11 +6,20 @@ import type {
   ID,
   Message,
   MessagePage,
+  MessageWindow,
   Orchard,
   User,
   UserStatus,
 } from "@shared/index";
 import { contentMentions } from "@/lib/mentions";
+
+/** A request to scroll to + highlight a message (e.g. from a search result). */
+export interface JumpTarget {
+  channelId: ID;
+  messageId: ID;
+  /** Bumped each request so re-jumping to the same message re-triggers it. */
+  token: number;
+}
 
 export type SessionStatus = "loading" | "anon" | "ready";
 
@@ -32,6 +41,14 @@ interface ChatState {
   hydrated: Record<ID, boolean>;
   /** Whether we've paged back to the channel's very first message. */
   historyComplete: Record<ID, boolean>;
+  /**
+   * Whether a channel is showing a historical window (jumped to an old message)
+   * rather than the live tail. Live messages aren't appended while detached;
+   * the UI offers "Jump to latest" to return.
+   */
+  detached: Record<ID, boolean>;
+  /** Pending scroll-to-message request (search result jump), or null. */
+  jumpTarget: JumpTarget | null;
 
   /* ui */
   activeChannelId: ID | null;
@@ -59,6 +76,13 @@ interface ChatState {
   setInitialPage: (channelId: ID, page: MessagePage) => void;
   /** Older page prepended on scroll-up. */
   prependPage: (channelId: ID, page: MessagePage) => void;
+  /** Replace a channel's window with a window centered on a jump target. */
+  setWindowAround: (channelId: ID, window: MessageWindow) => void;
+  /** Replace a channel's window with the live recent page ("jump to latest"). */
+  setRecentWindow: (channelId: ID, page: MessagePage) => void;
+  /** Request a scroll-to + highlight of a message. */
+  requestJump: (channelId: ID, messageId: ID) => void;
+  clearJump: () => void;
   setTyping: (channelId: ID, userIds: ID[]) => void;
 
   /* ui actions */
@@ -94,6 +118,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: {},
   hydrated: {},
   historyComplete: {},
+  detached: {},
+  jumpTarget: null,
 
   activeChannelId: null,
   typing: {},
@@ -118,6 +144,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: {},
       hydrated: {},
       historyComplete: {},
+      detached: {},
+      jumpTarget: null,
       activeChannelId: null,
       typing: {},
       unread: {},
@@ -160,6 +188,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addMessage: (message) =>
     set((s) => {
+      const isActiveEarly = s.activeChannelId === message.channelId;
+      const mineEarly = message.authorId === s.me?.id;
+
+      // While detached (viewing a historical jump window) we don't append live
+      // messages — they'd create a gap. Unread/mention counts still update; the
+      // "Jump to latest" affordance brings the user back to live.
+      if (s.detached[message.channelId]) {
+        const counts = !isActiveEarly && !mineEarly;
+        const unread = counts
+          ? { ...s.unread, [message.channelId]: (s.unread[message.channelId] ?? 0) + 1 }
+          : s.unread;
+        const mentionsMe = counts && s.me ? contentMentions(message.content, s.me.id) : false;
+        const mentions = mentionsMe
+          ? { ...s.mentions, [message.channelId]: true }
+          : s.mentions;
+        return { unread, mentions };
+      }
+
       const list = s.messages[message.channelId] ?? [];
       if (list.some((m) => m.id === message.id)) return {};
 
@@ -232,6 +278,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
       };
     }),
 
+  setWindowAround: (channelId, window) =>
+    set((s) => ({
+      messages: { ...s.messages, [channelId]: window.messages },
+      hydrated: { ...s.hydrated, [channelId]: true },
+      historyComplete: { ...s.historyComplete, [channelId]: !window.hasBefore },
+      detached: { ...s.detached, [channelId]: window.hasAfter },
+    })),
+
+  setRecentWindow: (channelId, page) =>
+    set((s) => ({
+      messages: { ...s.messages, [channelId]: page.messages },
+      hydrated: { ...s.hydrated, [channelId]: true },
+      historyComplete: { ...s.historyComplete, [channelId]: !page.hasMore },
+      detached: { ...s.detached, [channelId]: false },
+    })),
+
+  requestJump: (channelId, messageId) =>
+    set((s) => ({ jumpTarget: { channelId, messageId, token: (s.jumpTarget?.token ?? 0) + 1 } })),
+
+  clearJump: () => set({ jumpTarget: null }),
+
   setTyping: (channelId, userIds) => set((s) => ({ typing: { ...s.typing, [channelId]: userIds } })),
 
   setActiveChannel: (channelId) => {
@@ -242,6 +309,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         activeChannelId: channelId,
         unread: { ...s.unread, [channelId]: 0 },
         mentions: { ...s.mentions, [channelId]: false },
+        // A normal channel switch isn't a jump — drop any pending jump.
+        jumpTarget: null,
       };
       // Free the deep-scroll history of the channel we're leaving, keeping only a
       // recent window so re-opening still shows context instantly.

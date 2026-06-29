@@ -1,7 +1,7 @@
 import { Hash, Lock, Menu, Users } from "lucide-react";
 
 import type { UserStatus } from "@shared/index";
-import { dmPartnerId } from "@/lib/channel";
+import { dmPartnerId, isSelfDm } from "@/lib/channel";
 import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
 import { PresenceDot } from "./PresenceDot";
@@ -21,28 +21,37 @@ export function ChannelHeader({ onOpenNav }: { onOpenNav?: (() => void) | undefi
   if (!channel || !meId) return null;
 
   if (channel.kind === "dm") {
-    const partnerId = dmPartnerId(channel, meId);
-    const partner = partnerId ? users[partnerId] : undefined;
+    const self = isSelfDm(channel, meId);
+    const partnerId = self ? undefined : dmPartnerId(channel, meId);
+    const subject = self ? users[meId] : partnerId ? users[partnerId] : undefined;
     return (
       <Bar onOpenNav={onOpenNav}>
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          {partner && (
+          {subject && (
             <span className="relative">
-              <Avatar user={partner} size={30} className="rounded-lg" />
-              <PresenceDot
-                status={partner.status}
-                className="absolute -bottom-1 -right-1 size-2.5"
-                ring="ring-white"
-              />
+              <Avatar user={subject} size={30} className="rounded-lg" />
+              {!self && (
+                <PresenceDot
+                  status={subject.status}
+                  className="absolute -bottom-1 -right-1 size-2.5"
+                  ring="ring-raised"
+                />
+              )}
             </span>
           )}
           <div className="min-w-0">
             <h2 className="truncate font-display text-base font-bold text-ink">
-              {partner?.displayName ?? "Direct message"}
+              {self
+                ? `${subject?.displayName ?? "You"} (you)`
+                : (subject?.displayName ?? "Direct message")}
             </h2>
-            {partner && (
-              <p className="truncate text-xs text-ink-dim">{PRESENCE_LABEL[partner.status]}</p>
-            )}
+            <p className="truncate text-xs text-ink-dim">
+              {self
+                ? "This is your space — jot things down"
+                : subject
+                  ? PRESENCE_LABEL[subject.status]
+                  : ""}
+            </p>
           </div>
         </div>
       </Bar>
@@ -75,7 +84,7 @@ function Bar({
   onOpenNav?: (() => void) | undefined;
 }) {
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2 border-b border-line bg-white/70 px-3 backdrop-blur-xl sm:px-5">
+    <header className="flex h-16 shrink-0 items-center gap-2 border-b border-line bg-raised/70 px-3 backdrop-blur-xl sm:px-5">
       {onOpenNav && (
         <button
           onClick={onOpenNav}

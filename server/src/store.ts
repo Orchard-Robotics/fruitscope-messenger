@@ -10,6 +10,7 @@ import type {
   Message,
   MessageCursor,
   MessagePage,
+  MessageWindow,
   Orchard,
   Reaction,
   User,
@@ -299,6 +300,21 @@ export const channels = {
     });
     return row ? mapChannel(row) : undefined;
   },
+
+  /** The "message yourself" DM: a dm whose only member is the user. */
+  findSelfDm: async (orchardId: ID, userId: ID): Promise<Channel | undefined> => {
+    const row = await prisma.channel.findFirst({
+      where: {
+        orchardId,
+        kind: "dm",
+        // every member is me (and at least one) → exactly the self-DM, never a
+        // two-person DM that happens to include me.
+        members: { some: { userId }, every: { userId } },
+      },
+      include: channelInclude,
+    });
+    return row ? mapChannel(row) : undefined;
+  },
 };
 
 /**
@@ -358,6 +374,59 @@ export const messages = {
       include: messageInclude,
     });
     return mapMessage(row);
+  },
+
+  /**
+   * Full-text-ish search across the given channels (the caller passes the ones
+   * the user may see). Case-insensitive substring match, newest first — backed
+   * by the trigram GIN index on content, so it stays fast as history grows.
+   */
+  search: async (channelIds: ID[], query: string, limit: number): Promise<Message[]> => {
+    if (channelIds.length === 0) return [];
+    const rows = await prisma.message.findMany({
+      where: { channelId: { in: channelIds }, content: { contains: query, mode: "insensitive" } },
+      include: messageInclude,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+    });
+    return rows.map(mapMessage);
+  },
+
+  /**
+   * A window of messages centered on `cursor` (the target): up to `half` older,
+   * the target, and up to `half` newer — oldest-first — for jumping to a result.
+   */
+  around: async (
+    channelId: ID,
+    cursor: MessageCursor,
+    half: number,
+  ): Promise<MessageWindow> => {
+    const at = new Date(cursor.createdAt);
+    const olderRows = await prisma.message.findMany({
+      where: {
+        channelId,
+        OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: cursor.id } }],
+      },
+      include: messageInclude,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: half + 1,
+    });
+    // Includes the target (id >= cursor.id at the same instant) then newer ones.
+    const targetAndNewer = await prisma.message.findMany({
+      where: {
+        channelId,
+        OR: [{ createdAt: { gt: at } }, { createdAt: at, id: { gte: cursor.id } }],
+      },
+      include: messageInclude,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: half + 2,
+    });
+
+    const hasBefore = olderRows.length > half;
+    const older = (hasBefore ? olderRows.slice(0, half) : olderRows).reverse();
+    const hasAfter = targetAndNewer.length > half + 1;
+    const tail = hasAfter ? targetAndNewer.slice(0, half + 1) : targetAndNewer;
+    return { messages: [...older, ...tail].map(mapMessage), hasBefore, hasAfter };
   },
 
   toggleReaction: async (

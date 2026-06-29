@@ -1,11 +1,13 @@
-import { Hash, Lock, LogOut, Plus, Search } from "lucide-react";
+import { Hash, Lock, Plus, Search, Settings } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { Channel, ID, User } from "@shared/index";
 import { cn } from "@/lib/cn";
+import { isSelfDm } from "@/lib/channel";
 import { rest } from "@/lib/api";
 import { chat, disconnectSocket } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
+import { AppMenu } from "./AppMenu";
 import { Avatar } from "./Avatar";
 import { CreateChannelModal } from "./CreateChannelModal";
 import { Logo } from "./Logo";
@@ -16,9 +18,11 @@ import { ProfileModal } from "./ProfileModal";
 export function Sidebar({
   navOpen = false,
   onNavigate,
+  onOpenSearch,
 }: {
   navOpen?: boolean;
   onNavigate?: () => void;
+  onOpenSearch?: () => void;
 }) {
   const me = useChatStore((s) => s.me);
   const users = useChatStore((s) => s.users);
@@ -28,9 +32,9 @@ export function Sidebar({
   const activeChannelId = useChatStore((s) => s.activeChannelId);
   const setActiveChannel = useChatStore((s) => s.setActiveChannel);
 
-  const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const channelList = useMemo(
     () =>
@@ -64,11 +68,11 @@ export function Sidebar({
     [users],
   );
 
-  const q = query.trim().toLowerCase();
-  const visibleChannels = q ? channelList.filter((c) => c.name.includes(q)) : channelList;
-  const visiblePeople = q
-    ? people.filter((p) => p.displayName.toLowerCase().includes(q) || p.username.includes(q))
-    : people;
+  // The "message yourself" DM, if it's been opened (always offered via the row).
+  const selfDm = useMemo(
+    () => (me ? Object.values(channels).find((c) => isSelfDm(c, me.id)) : undefined),
+    [channels, me],
+  );
 
   const select = (channelId: ID) => {
     setActiveChannel(channelId);
@@ -103,22 +107,23 @@ export function Sidebar({
       </header>
 
       <div className="px-3 pb-2">
-        <div className="flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 focus-within:focus-ring">
-          <Search className="size-4 text-ink-faint" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Jump to…"
-            className="w-full bg-transparent text-sm text-ink placeholder:text-ink-faint focus:outline-none"
-          />
-        </div>
+        <button
+          onClick={onOpenSearch}
+          className="flex w-full items-center gap-2 rounded-xl border border-line bg-raised px-3 py-2 text-left text-ink-faint transition hover:border-brand-300 hover:text-ink-dim"
+        >
+          <Search className="size-4" />
+          <span className="flex-1 text-sm">Search</span>
+          <kbd className="rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] font-medium text-ink-faint">
+            ⌘K
+          </kbd>
+        </button>
       </div>
 
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-3">
         <section>
           <SectionHeader label="Channels" onAdd={() => setCreating(true)} />
           <ul className="mt-1 space-y-0.5">
-            {visibleChannels.map((c) => (
+            {channelList.map((c) => (
               <ChannelRow
                 key={c.id}
                 channel={c}
@@ -128,14 +133,21 @@ export function Sidebar({
                 onClick={() => select(c.id)}
               />
             ))}
-            {visibleChannels.length === 0 && <Empty>No channels</Empty>}
+            {channelList.length === 0 && <Empty>No channels</Empty>}
           </ul>
         </section>
 
         <section>
           <SectionHeader label="Direct messages" />
           <ul className="mt-1 space-y-0.5">
-            {visiblePeople.map((person) => {
+            {/* Pinned "message yourself" row, Slack-style. */}
+            <SelfDmRow
+              me={me}
+              active={!!selfDm && selfDm.id === activeChannelId}
+              unread={selfDm ? (unread[selfDm.id] ?? 0) : 0}
+              onClick={() => void openDm(me.id)}
+            />
+            {people.map((person) => {
               const dm = dmByPartner.get(person.id);
               const dmUnread = dm ? (unread[dm.id] ?? 0) : 0;
               return (
@@ -149,16 +161,18 @@ export function Sidebar({
                 />
               );
             })}
-            {visiblePeople.length === 0 && <Empty>No people</Empty>}
           </ul>
         </section>
       </nav>
 
-      <footer className="flex items-center gap-3 border-t border-line px-3 py-3">
+      <footer className="relative flex items-center gap-3 border-t border-line px-3 py-3">
         <button
-          onClick={() => setEditingProfile(true)}
-          title="Edit profile picture"
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 -m-1 text-left transition hover:bg-surface-2"
+          onClick={() => setMenuOpen((v) => !v)}
+          title="Menu & preferences"
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 -m-1 text-left transition hover:bg-surface-2",
+            menuOpen && "bg-surface-2",
+          )}
         >
           <div className="relative">
             <Avatar user={me} size={36} />
@@ -168,14 +182,17 @@ export function Sidebar({
             <p className="truncate text-sm font-semibold text-ink">{me.displayName}</p>
             <p className="truncate text-xs text-ink-faint">@{me.username}</p>
           </div>
+          <Settings className="size-4 shrink-0 text-ink-faint" />
         </button>
-        <button
-          onClick={() => void signOut()}
-          title="Sign out"
-          className="grid size-9 shrink-0 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2 hover:text-danger"
-        >
-          <LogOut className="size-4" />
-        </button>
+
+        {menuOpen && (
+          <AppMenu
+            me={me}
+            onClose={() => setMenuOpen(false)}
+            onEditProfile={() => setEditingProfile(true)}
+            onSignOut={() => void signOut()}
+          />
+        )}
       </footer>
 
       <CreateChannelModal open={creating} onClose={() => setCreating(false)} />
@@ -278,6 +295,40 @@ function PersonRow({
           {person.displayName}
         </span>
         {unread > 0 && <UnreadBadge count={unread} mentioned={mentioned} />}
+      </button>
+    </li>
+  );
+}
+
+// The pinned "message yourself" row — your own avatar + a "you" tag.
+function SelfDmRow({
+  me,
+  active,
+  unread,
+  onClick,
+}: {
+  me: User;
+  active: boolean;
+  unread: number;
+  onClick: () => void;
+}) {
+  return (
+    <li>
+      <button
+        onClick={onClick}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition",
+          active ? "bg-brand-500/12 text-brand-700" : "text-ink-dim hover:bg-surface-2 hover:text-ink",
+        )}
+      >
+        <Avatar user={me} size={24} className="rounded-lg" />
+        <span className={cn("truncate", unread > 0 && "font-semibold text-ink")}>
+          {me.displayName}
+        </span>
+        <span className="rounded bg-surface-2 px-1 text-[10px] font-medium uppercase tracking-wide text-ink-faint">
+          you
+        </span>
+        {unread > 0 && <UnreadBadge count={unread} mentioned={false} />}
       </button>
     </li>
   );
