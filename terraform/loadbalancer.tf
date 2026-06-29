@@ -29,8 +29,14 @@ resource "google_compute_backend_service" "default" {
 resource "google_compute_url_map" "default" {
   name = "verdant-urlmap"
 
-  # Default: the static SPA on GCS + Cloud CDN.
+  # Default (apex): the static SPA on GCS + Cloud CDN.
   default_service = google_compute_backend_bucket.web.id
+
+  # Media lives on its own subdomain, backed by its own CDN bucket.
+  host_rule {
+    hosts        = ["media.${var.domain}"]
+    path_matcher = "media"
+  }
 
   host_rule {
     hosts        = ["*"]
@@ -46,13 +52,13 @@ resource "google_compute_url_map" "default" {
       paths   = ["/api", "/api/*", "/socket.io", "/socket.io/*", "/health"]
       service = google_compute_backend_service.default.id
     }
+  }
 
-    # Uploaded media (profile pictures) → the CDN-backed media bucket, served
-    # directly to the browser (never through Cloud Run).
-    path_rule {
-      paths   = ["/avatars/*"]
-      service = google_compute_backend_bucket.media.id
-    }
+  # Everything on media.<domain> → the CDN-backed media bucket, served straight
+  # to the browser (never through Cloud Run).
+  path_matcher {
+    name            = "media"
+    default_service = google_compute_backend_bucket.media.id
   }
 }
 
@@ -64,10 +70,26 @@ resource "google_compute_managed_ssl_certificate" "default" {
   }
 }
 
+# Separate managed cert for the media subdomain — kept distinct from the apex
+# cert so adding it never forces the apex cert to re-provision. Provisions
+# asynchronously after the DNS record below resolves to the LB (can take a while
+# on first deploy; the apex keeps serving throughout).
+resource "google_compute_managed_ssl_certificate" "media" {
+  name = "verdant-media-cert"
+
+  managed {
+    domains = ["media.${var.domain}"]
+  }
+}
+
 resource "google_compute_target_https_proxy" "default" {
-  name             = "verdant-https-proxy"
-  url_map          = google_compute_url_map.default.id
-  ssl_certificates = [google_compute_managed_ssl_certificate.default.id]
+  name    = "verdant-https-proxy"
+  url_map = google_compute_url_map.default.id
+  # SNI: the apex cert and the media cert are served independently.
+  ssl_certificates = [
+    google_compute_managed_ssl_certificate.default.id,
+    google_compute_managed_ssl_certificate.media.id,
+  ]
 }
 
 resource "google_compute_global_forwarding_rule" "https" {

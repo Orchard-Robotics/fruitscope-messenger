@@ -1,9 +1,9 @@
-# Uploaded media (profile pictures): a public GCS bucket fronted by Cloud CDN.
+# Uploaded media (profile pictures): a dedicated public GCS bucket fronted by its
+# own Cloud CDN, on its own subdomain (media.<domain>).
 #
-# The browser reads avatars STRAIGHT from the CDN — the load balancer routes
-# /avatars/* to this backend bucket (see loadbalancer.tf), never to Cloud Run.
+# The browser reads avatars STRAIGHT from the CDN — the load balancer host-routes
+# media.<domain> to this backend bucket (see loadbalancer.tf), never to Cloud Run.
 # The Cloud Run service only writes objects here (it never serves image bytes).
-# Same domain as the app, so no CORS is needed for reads.
 
 resource "google_storage_bucket" "media" {
   name                        = "${var.project_id}-verdant-media"

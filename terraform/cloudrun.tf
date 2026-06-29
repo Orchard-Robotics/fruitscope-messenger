@@ -83,8 +83,8 @@ resource "google_cloud_run_v2_service" "verdant" {
       }
 
       # Profile pictures: upload to the media bucket (via ADC); the public URL is
-      # built as ${MEDIA_PUBLIC_BASE}/<key>, served by the CDN under /avatars/*.
-      # No GCS_EMULATOR_HOST in prod → real GCS.
+      # built as ${MEDIA_PUBLIC_BASE}/<key>, served from the dedicated media
+      # subdomain's CDN bucket. No GCS_EMULATOR_HOST in prod → real GCS.
       env {
         name  = "GCS_MEDIA_BUCKET"
         value = google_storage_bucket.media.name
@@ -92,7 +92,7 @@ resource "google_cloud_run_v2_service" "verdant" {
 
       env {
         name  = "MEDIA_PUBLIC_BASE"
-        value = "https://${var.domain}"
+        value = "https://media.${var.domain}"
       }
 
       volume_mounts {
