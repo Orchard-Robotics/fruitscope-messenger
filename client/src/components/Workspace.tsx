@@ -1,19 +1,24 @@
-import { Menu, MessageSquareHeart, WifiOff } from "lucide-react";
+import { MessageSquareHeart, WifiOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { channelTitle, isSelfDm } from "@/lib/channel";
+import { signOut } from "@/lib/session";
 import { useChatStore } from "@/store/store";
 import { ChannelHeader } from "./ChannelHeader";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
+import { PreferencesModal } from "./PreferencesModal";
+import { ProfileModal } from "./ProfileModal";
 import { SearchModal } from "./SearchModal";
 import { Sidebar } from "./Sidebar";
+import { TopBar } from "./TopBar";
 
 export function Workspace() {
+  const me = useChatStore((s) => s.me);
   const activeChannelId = useChatStore((s) => s.activeChannelId);
   const channel = useChatStore((s) => (activeChannelId ? s.channels[activeChannelId] : undefined));
   const users = useChatStore((s) => s.users);
-  const meId = useChatStore((s) => s.me?.id);
+  const meId = me?.id;
   const connected = useChatStore((s) => s.connected);
   // A jump (search result) bumps this for the active channel; it's in the
   // MessageList key so the list remounts centered on the target.
@@ -23,6 +28,8 @@ export function Workspace() {
 
   const [navOpen, setNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // Cmd/Ctrl+K opens search (Slack's quick switcher shortcut).
   useEffect(() => {
@@ -44,35 +51,53 @@ export function Workspace() {
   }, [channel, users, meId]);
 
   return (
-    <div className="relative z-10 flex h-dvh overflow-hidden">
-      {/* Drawer backdrop (mobile only) */}
-      {navOpen && (
-        <div
-          className="fixed inset-0 z-20 bg-black/40 backdrop-blur-sm md:hidden"
-          onClick={() => setNavOpen(false)}
+    <div className="relative z-10 flex h-dvh flex-col overflow-hidden">
+      {me && (
+        <TopBar
+          me={me}
+          onOpenSearch={() => setSearchOpen(true)}
+          onOpenNav={() => setNavOpen(true)}
+          onOpenPrefs={() => setPrefsOpen(true)}
+          onEditProfile={() => setProfileOpen(true)}
+          onSignOut={() => void signOut()}
         />
       )}
 
-      <Sidebar
-        navOpen={navOpen}
-        onNavigate={() => setNavOpen(false)}
-        onOpenSearch={() => setSearchOpen(true)}
-      />
-
-      <main className="relative flex min-w-0 flex-1 flex-col">
-        {!connected && <ConnectionBanner />}
-        {channel && activeChannelId ? (
-          <>
-            <ChannelHeader onOpenNav={() => setNavOpen(true)} />
-            <MessageList key={`${activeChannelId}:${jumpToken}`} channelId={activeChannelId} />
-            <Composer channelId={activeChannelId} placeholder={placeholder} />
-          </>
-        ) : (
-          <EmptyState onOpenNav={() => setNavOpen(true)} />
+      <div className="relative flex min-h-0 flex-1">
+        {/* Drawer backdrop (mobile only) */}
+        {navOpen && (
+          <div
+            className="absolute inset-0 z-20 bg-black/40 backdrop-blur-sm md:hidden"
+            onClick={() => setNavOpen(false)}
+          />
         )}
-      </main>
+
+        <Sidebar navOpen={navOpen} onNavigate={() => setNavOpen(false)} />
+
+        <main className="relative flex min-w-0 flex-1 flex-col">
+          {!connected && <ConnectionBanner />}
+          {channel && activeChannelId ? (
+            <>
+              <ChannelHeader />
+              <MessageList key={`${activeChannelId}:${jumpToken}`} channelId={activeChannelId} />
+              <Composer channelId={activeChannelId} placeholder={placeholder} />
+            </>
+          ) : (
+            <EmptyState />
+          )}
+        </main>
+      </div>
 
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <PreferencesModal
+        open={prefsOpen}
+        onClose={() => setPrefsOpen(false)}
+        onEditPhoto={() => {
+          setPrefsOpen(false);
+          setProfileOpen(true);
+        }}
+      />
+      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
     </div>
   );
 }
@@ -86,27 +111,16 @@ function ConnectionBanner() {
   );
 }
 
-function EmptyState({ onOpenNav }: { onOpenNav: () => void }) {
+function EmptyState() {
   return (
-    <>
-      <header className="flex h-16 shrink-0 items-center border-b border-line bg-raised/70 px-4 backdrop-blur-xl md:hidden">
-        <button
-          onClick={onOpenNav}
-          className="grid size-9 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2"
-          aria-label="Open menu"
-        >
-          <Menu className="size-5" />
-        </button>
-      </header>
-      <div className="grid flex-1 place-items-center px-6 text-center">
-        <div>
-          <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-brand-50 text-brand-600">
-            <MessageSquareHeart className="size-8" />
-          </div>
-          <p className="mt-4 font-display text-lg font-semibold text-ink">Pick a place to talk</p>
-          <p className="mt-1 text-sm text-ink-dim">Choose a channel or a person from the menu.</p>
+    <div className="grid flex-1 place-items-center px-6 text-center">
+      <div>
+        <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-brand-50 text-brand-600">
+          <MessageSquareHeart className="size-8" />
         </div>
+        <p className="mt-4 font-display text-lg font-semibold text-ink">Pick a place to talk</p>
+        <p className="mt-1 text-sm text-ink-dim">Choose a channel or a person from the menu.</p>
       </div>
-    </>
+    </div>
   );
 }
