@@ -1,29 +1,23 @@
-import { Hash, Lock, Plus, Search, Settings, Users } from "lucide-react";
+import { Hash, Lock, Plus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { Channel, ID, User } from "@shared/index";
 import { cn } from "@/lib/cn";
 import { channelTitle, isGroupDm, isSelfDm } from "@/lib/channel";
-import { rest } from "@/lib/api";
-import { chat, disconnectSocket } from "@/lib/socket";
+import { chat } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
-import { AppMenu } from "./AppMenu";
 import { Avatar } from "./Avatar";
 import { CreateChannelModal } from "./CreateChannelModal";
-import { Logo } from "./Logo";
 import { NewDmModal } from "./NewDmModal";
 import { OrchardSwitcher } from "./OrchardSwitcher";
 import { PresenceDot } from "./PresenceDot";
-import { ProfileModal } from "./ProfileModal";
 
 export function Sidebar({
   navOpen = false,
   onNavigate,
-  onOpenSearch,
 }: {
   navOpen?: boolean;
   onNavigate?: () => void;
-  onOpenSearch?: () => void;
 }) {
   const me = useChatStore((s) => s.me);
   const users = useChatStore((s) => s.users);
@@ -34,8 +28,6 @@ export function Sidebar({
   const setActiveChannel = useChatStore((s) => s.setActiveChannel);
 
   const [creating, setCreating] = useState(false);
-  const [editingProfile, setEditingProfile] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [newDm, setNewDm] = useState(false);
 
   const channelList = useMemo(
@@ -98,39 +90,19 @@ export function Sidebar({
     if (res.ok) select(res.data.id);
   };
 
-  const signOut = async () => {
-    disconnectSocket();
-    await rest.logout().catch(() => {}); // best-effort: clear the server session + cookie
-    useChatStore.getState().signOut();
-  };
-
   if (!me) return null;
 
   return (
     <aside
       className={cn(
         "z-30 flex h-full w-72 shrink-0 flex-col border-r border-line bg-surface/95 backdrop-blur-xl",
-        "fixed inset-y-0 left-0 transition-transform duration-200 md:static md:translate-x-0",
+        "absolute inset-y-0 left-0 transition-transform duration-200 md:static md:translate-x-0",
         navOpen ? "translate-x-0 shadow-2xl shadow-ink/20" : "-translate-x-full md:translate-x-0",
       )}
     >
-      <header className="flex items-center gap-3 px-5 pb-3 pt-5">
-        <Logo className="size-9 shrink-0" />
+      <header className="px-3 pb-2 pt-4">
         <OrchardSwitcher onlineCount={onlineCount} />
       </header>
-
-      <div className="px-3 pb-2">
-        <button
-          onClick={onOpenSearch}
-          className="flex w-full items-center gap-2 rounded-xl border border-line bg-raised px-3 py-2 text-left text-ink-faint transition hover:border-brand-300 hover:text-ink-dim"
-        >
-          <Search className="size-4" />
-          <span className="flex-1 text-sm">Search</span>
-          <kbd className="rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] font-medium text-ink-faint">
-            ⌘K
-          </kbd>
-        </button>
-      </div>
 
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-3">
         <section>
@@ -190,38 +162,7 @@ export function Sidebar({
         </section>
       </nav>
 
-      <footer className="relative flex items-center gap-3 border-t border-line px-3 py-3">
-        <button
-          onClick={() => setMenuOpen((v) => !v)}
-          title="Menu & preferences"
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 -m-1 text-left transition hover:bg-surface-2",
-            menuOpen && "bg-surface-2",
-          )}
-        >
-          <div className="relative">
-            <Avatar user={me} size={36} />
-            <PresenceDot status={me.status} className="absolute -bottom-0.5 -right-0.5" ring="ring-surface" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-ink">{me.displayName}</p>
-            <p className="truncate text-xs text-ink-faint">@{me.username}</p>
-          </div>
-          <Settings className="size-4 shrink-0 text-ink-faint" />
-        </button>
-
-        {menuOpen && (
-          <AppMenu
-            me={me}
-            onClose={() => setMenuOpen(false)}
-            onEditProfile={() => setEditingProfile(true)}
-            onSignOut={() => void signOut()}
-          />
-        )}
-      </footer>
-
       <CreateChannelModal open={creating} onClose={() => setCreating(false)} />
-      <ProfileModal open={editingProfile} onClose={() => setEditingProfile(false)} />
       <NewDmModal open={newDm} onClose={() => setNewDm(false)} />
     </aside>
   );
