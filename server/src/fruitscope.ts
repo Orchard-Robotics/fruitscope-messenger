@@ -479,7 +479,12 @@ export async function chatCollect(
   const reader = (res.body as ReadableStream<Uint8Array>).getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let text = "";
+  // Text streams as one or more blocks keyed by id (text-start/-delta/-end).
+  // FruitScope emits the model's running status commentary as separate blocks
+  // whose text begins with a zero-width space (U+200B); only the un-prefixed
+  // block(s) are the actual answer. Accumulate per id so we can drop the status
+  // blocks afterward — mirrors the browser's CanaryMessage rendering.
+  const blocks = new Map<string, string>();
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -494,13 +499,20 @@ export async function chatCollect(
         const payload = trimmed.slice(5).trim();
         if (!payload || payload === "[DONE]") continue;
         try {
-          const obj = JSON.parse(payload) as { type?: string; delta?: string };
-          if (obj.type === "text-delta" && typeof obj.delta === "string") text += obj.delta;
+          const obj = JSON.parse(payload) as { type?: string; id?: string; delta?: string };
+          if (obj.type === "text-delta" && typeof obj.delta === "string") {
+            const id = obj.id ?? "";
+            blocks.set(id, (blocks.get(id) ?? "") + obj.delta);
+          }
         } catch {
           /* ignore non-JSON frames */
         }
       }
     }
   }
-  return text.trim();
+  // Keep only answer blocks; drop U+200B-prefixed status commentary.
+  return [...blocks.values()]
+    .filter((t) => !t.startsWith("\u200b"))
+    .join("\n\n")
+    .trim();
 }

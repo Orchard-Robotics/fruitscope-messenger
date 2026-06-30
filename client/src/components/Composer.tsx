@@ -174,7 +174,9 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
     return mentionedIds(content)
       .filter((id) => id !== meId && !members.has(id))
       .map((id) => users[id])
-      .filter((u): u is User => Boolean(u));
+      // Bots (Canary) auto-join the room when mentioned and answer on their own,
+      // so don't prompt to "add them" — it'd flash right as Canary is replying.
+      .filter((u): u is User => u != null && !u.isBot);
   };
 
   const send = async () => {
