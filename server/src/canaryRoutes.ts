@@ -116,15 +116,15 @@ canary.get("/o/:orchard/blocks", async (req, res) => {
       blocks: blocks.map((b) => ({
         blockId: b.block_id,
         blockName: b.block_name,
-        ranchName: b.ranch_name ?? null,
+        ranchName: b.ranches ? (Object.keys(b.ranches)[0] ?? null) : null,
         variety: b.block_variety ?? null,
-        lastScanDate: b.last_scan_date ?? null,
-        scans: (b.scans ?? []).map((s) => ({
-          scanId: s.scan_id,
-          scanName: s.scan_name,
-          timestamp: s.timestamp,
-          stage: s.stage_type ?? null,
-        })),
+        fruitType: b.fruit_type ?? null,
+        acreage: b.acreage ?? null,
+        lat: b.center_lat ?? null,
+        lon: b.center_lon ?? null,
+        lastScanDate: b.last_scan_timestamp ?? null,
+        lastScanStage: b.last_scan_type ?? null,
+        lastScanId: b.last_scan_id ?? null,
       })),
     });
   } catch (err) {

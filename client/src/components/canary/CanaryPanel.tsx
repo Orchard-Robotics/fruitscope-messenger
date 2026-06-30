@@ -28,11 +28,6 @@ type Mode = "farm" | "general";
 let _seq = 0;
 const localId = (): string => `local-${(_seq += 1)}`;
 
-/** Most-recent scan in a block (FruitScope grounds answers on a scan). */
-function latestScan(block: CanaryBlock): CanaryBlock["scans"][number] | undefined {
-  return [...block.scans].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))[0];
-}
-
 /** FruitScope persists message content as `{ parts: [...] }`; rebuild UIMessages. */
 function toUiMessage(m: { role: "user" | "assistant"; content: unknown }): UIMessage {
   const c = m.content;
@@ -229,7 +224,7 @@ export function CanaryPanel() {
     }
     setError(null);
     const b = general ? null : block;
-    const scan = b ? latestScan(b) : undefined;
+    const scanIds = b?.lastScanId != null ? [b.lastScanId] : null;
 
     try {
       let convId = activeIdRef.current;
@@ -249,7 +244,7 @@ export function CanaryPanel() {
         const ctx = await canaryApi.prepareContext(orchard, {
           conversation_id: convId,
           block_info: b ? { block_name: b.blockName, block_id: b.blockId } : null,
-          scan_ids: scan ? [scan.scanId] : null,
+          scan_ids: scanIds,
           agent_mode: "analytical",
           general_mode: general,
         });
@@ -257,9 +252,9 @@ export function CanaryPanel() {
       }
       const currentView = {
         block_name: b?.blockName ?? null,
-        scan_ids: scan ? [scan.scanId] : null,
+        scan_ids: scanIds,
         sub_block_id: null,
-        scan_label: scan?.scanName ?? null,
+        scan_label: b?.lastScanStage ?? null,
       };
       sendMessage(
         { text: trimmed },

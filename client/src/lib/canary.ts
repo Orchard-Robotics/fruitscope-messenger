@@ -49,20 +49,19 @@ export interface CanaryOrchard {
   name: string;
 }
 
-export interface CanaryScan {
-  scanId: number;
-  scanName: string;
-  timestamp: string;
-  stage: string | null;
-}
-
 export interface CanaryBlock {
   blockId: number;
   blockName: string;
   ranchName: string | null;
   variety: string | null;
+  fruitType: string | null;
+  acreage: number | null;
+  /** Block centroid (for the map selector); null if the block has no geometry. */
+  lat: number | null;
+  lon: number | null;
   lastScanDate: string | null;
-  scans: CanaryScan[];
+  lastScanStage: string | null;
+  lastScanId: number | null;
 }
 
 export interface CanaryConversation {

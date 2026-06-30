@@ -217,20 +217,24 @@ export interface FsConversationSummary {
   preview?: string;
 }
 
-export interface FsBlockScan {
-  scan_id: number;
-  scan_name: string;
-  timestamp: string;
-  stage_type?: string | null;
+/** One block from `/util/get_block_scan_map` (the values of its `blocks` dict). */
+export interface FsBlock {
+  block_id: number;
+  block_name: string;
+  center_lat?: number | null;
+  center_lon?: number | null;
+  last_scan_timestamp?: string | null;
+  last_scan_type?: string | null;
+  last_scan_id?: number | null;
+  block_variety?: string | null;
+  fruit_type?: string | null;
+  acreage?: number | null;
+  ranches?: Record<string, number> | null;
 }
 
-export interface FsBlock {
-  block_name: string;
-  block_id: number;
-  ranch_name?: string | null;
-  block_variety?: string | null;
-  last_scan_date?: string | null;
-  scans?: FsBlockScan[];
+interface FsBlockScanMap {
+  blocks?: Record<string, FsBlock>;
+  ranches?: { ranch_id: number; name: string }[];
 }
 
 export interface FsPrepareContextResult {
@@ -263,9 +267,15 @@ export async function getUserInfo(authJwt: string, fallbackOrchard?: string): Pr
   return (await res.json()) as FsUserInfo;
 }
 
-/** Blocks (and their scans) in an orchard — for the block picker. */
-export function getBlocks(authJwt: string, orchardCode: string): Promise<FsBlock[]> {
-  return orchardJson<FsBlock[]>(authJwt, orchardCode, "GET", "/util/get_block_scan_map");
+/**
+ * Blocks in an orchard — for the block picker/map. `get_block_scan_map` returns
+ * `{ blocks: { "<name>": {...} }, ranches: [...] }` (a dict keyed by block name),
+ * so flatten it to an array.
+ */
+export async function getBlocks(authJwt: string, orchardCode: string): Promise<FsBlock[]> {
+  const data = await orchardJson<FsBlockScanMap>(authJwt, orchardCode, "GET", "/util/get_block_scan_map");
+  const blocks = data?.blocks;
+  return blocks && typeof blocks === "object" ? Object.values(blocks) : [];
 }
 
 export function listConversations(

@@ -1,4 +1,4 @@
-import { Brain, ChevronRight, FileText, Link2, ListChecks, Quote, Wrench } from "lucide-react";
+import { Brain, ChevronRight, FileText, Link2, ListChecks, Quote, Sparkles, Wrench } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { CanaryAvatar } from "./CanaryAvatar";
@@ -60,14 +60,24 @@ function Part({ part }: { part: UIPart }) {
   const { type } = part;
 
   if (type === "text") {
-    return part.text ? <Markdown>{part.text}</Markdown> : null;
+    if (!part.text) return null;
+    // FruitScope prefixes the model's running status/summary commentary with a
+    // zero-width space (U+200B). Those belong with the thinking, not the answer —
+    // render them muted instead of as conversation.
+    if (part.text.startsWith("\u200b")) {
+      const status = part.text.replace(/\u200b/g, "").trim();
+      return status ? <StatusLine text={status} /> : null;
+    }
+    return <Markdown>{part.text}</Markdown>;
   }
 
   if (type === "reasoning") {
-    if (!part.text) return null;
+    if (!part.text?.trim()) return null;
     return (
       <Disclosure icon={<Brain className="size-3.5" />} label="Thought process">
-        <div className="whitespace-pre-wrap text-xs leading-relaxed text-ink-dim">{part.text}</div>
+        <div className="text-xs leading-relaxed text-ink-dim [&_strong]:text-ink-dim">
+          <Markdown>{part.text}</Markdown>
+        </div>
       </Disclosure>
     );
   }
@@ -109,6 +119,16 @@ function Part({ part }: { part: UIPart }) {
   }
 
   return null; // unknown part type — render nothing rather than raw JSON
+}
+
+/** A muted "thinking aloud" status line (the model's U+200B-prefixed commentary). */
+function StatusLine({ text }: { text: string }) {
+  return (
+    <p className="flex items-start gap-1.5 text-xs italic text-ink-faint">
+      <Sparkles className="mt-0.5 size-3 shrink-0" />
+      <span>{text}</span>
+    </p>
+  );
 }
 
 /* ------------------------------------------------------------------ */
