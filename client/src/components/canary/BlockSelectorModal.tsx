@@ -143,11 +143,15 @@ export function BlockSelectorModal({
         source: "blocks",
         layout: {
           "text-field": ["get", "name"],
-          "text-size": 11,
-          "text-offset": [0, 1.3],
+          "text-font": ["Open Sans Bold"],
+          "text-size": 12,
+          "text-offset": [0, 1.2],
           "text-anchor": "top",
+          // The user wants every block named — show all labels, even if they overlap.
+          "text-allow-overlap": true,
+          "text-ignore-placement": true,
         },
-        paint: { "text-color": "#ffffff", "text-halo-color": "#000000", "text-halo-width": 1.2 },
+        paint: { "text-color": "#ffffff", "text-halo-color": "#000000", "text-halo-width": 1.4 },
       });
     });
 

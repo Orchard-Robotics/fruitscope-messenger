@@ -20,6 +20,8 @@ export const MAPBOX_TOKEN: string =
  */
 export const mapboxSatelliteStyle = (): StyleSpecification => ({
   version: 8,
+  // Required for any text (symbol) layers — MapLibre renders no labels without it.
+  glyphs: `https://api.mapbox.com/fonts/v1/mapbox/{fontstack}/{range}.pbf?access_token=${MAPBOX_TOKEN}`,
   sources: {
     "mapbox-satellite": {
       type: "raster",
