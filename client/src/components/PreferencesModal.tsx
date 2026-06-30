@@ -90,6 +90,11 @@ function Appearance() {
   const setCompact = usePrefs((s) => s.setCompact);
   const reduceMotion = usePrefs((s) => s.reduceMotion);
   const setReduceMotion = usePrefs((s) => s.setReduceMotion);
+  const showCanaryDebug = usePrefs((s) => s.showCanaryDebug);
+  const setShowCanaryDebug = usePrefs((s) => s.setShowCanaryDebug);
+  // Admin-only: also gates the "Thought process" boxes on Canary's @mention
+  // replies in channels (the same pref the Bug toggle in the Canary DM flips).
+  const isSuperAdmin = useChatStore((s) => s.isSuperAdmin);
 
   return (
     <div className="max-w-md">
@@ -127,6 +132,14 @@ function Appearance() {
           checked={reduceMotion}
           onChange={setReduceMotion}
         />
+        {isSuperAdmin && (
+          <SettingToggle
+            label="Show Canary thinking"
+            hint="Reveal Canary's reasoning in its DM and on its channel replies (admins only)."
+            checked={showCanaryDebug}
+            onChange={setShowCanaryDebug}
+          />
+        )}
       </div>
     </div>
   );

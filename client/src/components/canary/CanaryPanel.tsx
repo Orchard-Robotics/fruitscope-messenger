@@ -484,7 +484,7 @@ function Header({
         {canDebug && (
           <button
             onClick={onToggleDebug}
-            title={debugOn ? "Hide debug context" : "Show debug context"}
+            title={debugOn ? "Hide Canary thinking" : "Show Canary thinking"}
             className={cn(
               "grid size-8 shrink-0 place-items-center rounded-lg border transition",
               debugOn
