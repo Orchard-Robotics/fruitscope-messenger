@@ -32,6 +32,8 @@ interface ChatState {
   isSuperAdmin: boolean;
   /** Whether the user may use Canary's "general" (non-farm) chat mode. */
   canUseGeneralMode: boolean;
+  /** Set when a super admin is masquerading — carries the real admin's name. */
+  masquerade: { realName: string } | null;
   session: SessionStatus;
   connected: boolean;
 
@@ -113,6 +115,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   orchard: null,
   isSuperAdmin: false,
   canUseGeneralMode: false,
+  masquerade: null,
   session: "loading",
   connected: false,
 
@@ -141,6 +144,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       orchard: null,
       isSuperAdmin: false,
       canUseGeneralMode: false,
+      masquerade: null,
       session: "anon",
       connected: false,
       users: {},
@@ -173,6 +177,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         orchard: data.orchard,
         isSuperAdmin: data.isSuperAdmin,
         canUseGeneralMode: data.canUseGeneralMode,
+        masquerade: data.masquerade,
         users,
         channels: toRecord(data.channels),
         session: "ready",

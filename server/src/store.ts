@@ -3,6 +3,7 @@ import type { Orchard as DbOrchard, User as DbUser } from "@prisma/client";
 import { nanoid } from "nanoid";
 
 import type {
+  AdminUser,
   Bootstrap,
   Channel,
   ChannelKind,
@@ -200,6 +201,37 @@ export const users = {
 
   isSuperAdmin: async (id: ID): Promise<boolean> =>
     (await prisma.user.findUnique({ where: { id } }))?.isSuperAdmin ?? false,
+
+  displayName: async (id: ID): Promise<string | undefined> =>
+    (await prisma.user.findUnique({ where: { id } }))?.displayName,
+
+  /**
+   * Every real user (the Canary bot excluded) with their orchard memberships +
+   * roles — for the admin User Management page / masquerade picker.
+   */
+  allForAdmin: async (): Promise<AdminUser[]> => {
+    const rows = await prisma.user.findMany({
+      where: { isBot: false },
+      include: { orchards: { include: { orchard: true } } },
+      orderBy: { displayName: "asc" },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      username: row.username,
+      displayName: row.displayName,
+      email: row.email,
+      avatarUrl: row.avatarKey ? publicUrl(row.avatarKey) : null,
+      hue: row.hue,
+      status: row.status as UserStatus,
+      isSuperAdmin: row.isSuperAdmin,
+      isBot: row.isBot,
+      orchards: row.orchards.map((m) => ({
+        code: m.orchard.code,
+        name: m.orchard.name,
+        role: m.role,
+      })),
+    }));
+  },
 
   /** Current avatar object key (to delete the old object on change/removal). */
   avatarKey: async (id: ID): Promise<string | null> =>
@@ -635,5 +667,7 @@ export async function bootstrap(userId: ID, orchardId: ID): Promise<Bootstrap> {
     // Canary "general" mode is Orchard Robotics staff only (matches the
     // FruitScope backend gate, which is strictly email-domain based).
     canUseGeneralMode: (meRow.email ?? "").trim().toLowerCase().endsWith("@orchard-robotics.com"),
+    // Set by the /bootstrap route when this session is masquerading.
+    masquerade: null,
   };
 }

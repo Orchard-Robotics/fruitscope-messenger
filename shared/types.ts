@@ -99,6 +99,27 @@ export interface Bootstrap {
    * so the messenger only offers the toggle when it will actually take effect.
    */
   canUseGeneralMode: boolean;
+  /**
+   * Present (and active) when a super admin is masquerading as another user. The
+   * rest of the bootstrap is the MASQUERADED user's view; this carries the real
+   * admin's name so the UI can show the "viewing as" banner + exit.
+   */
+  masquerade: { realName: string } | null;
+}
+
+/** A user as shown in the admin User Management page (richer than the chat `User`). */
+export interface AdminUser {
+  id: ID;
+  username: string;
+  displayName: string;
+  email: string | null;
+  avatarUrl: string | null;
+  hue: number;
+  status: UserStatus;
+  isSuperAdmin: boolean;
+  isBot: boolean;
+  /** Orchards the user belongs to, with their role in each. */
+  orchards: { code: string; name: string; role: string }[];
 }
 
 /**

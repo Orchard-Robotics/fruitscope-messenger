@@ -120,16 +120,21 @@ function startTyping(io: IOServer, channelId: ID, userId: ID): void {
 /* -------------------------------- presence --------------------------------- */
 
 async function onConnect(io: IOServer, socket: IOSocket, userId: ID, orchardId: ID): Promise<void> {
+  // Always join the rooms so a masquerading admin sees + can act in the channels.
+  socket.join(orchRoom(orchardId));
+  socket.join(userRoom(orchardId, userId));
+  for (const channel of await channels.visibleTo(userId, orchardId)) socket.join(chanRoom(channel.id));
+
+  // Masquerade is invisible: don't track presence (it would make the impersonated
+  // user appear online and corrupt their real socket count on disconnect).
+  if (socket.data.masquerading) return;
+
   const key = `${orchardId}:${userId}`;
   const sockets = liveByOrchard.get(key) ?? new Set<string>();
   const wasOffline = sockets.size === 0;
   sockets.add(socket.id);
   liveByOrchard.set(key, sockets);
   userSocketCount.set(userId, (userSocketCount.get(userId) ?? 0) + 1);
-
-  socket.join(orchRoom(orchardId));
-  socket.join(userRoom(orchardId, userId));
-  for (const channel of await channels.visibleTo(userId, orchardId)) socket.join(chanRoom(channel.id));
 
   if (wasOffline) {
     const me = await users.setStatus(userId, "online");
@@ -138,6 +143,13 @@ async function onConnect(io: IOServer, socket: IOSocket, userId: ID, orchardId: 
 }
 
 async function onDisconnect(io: IOServer, socket: IOSocket, userId: ID, orchardId: ID): Promise<void> {
+  // Clear any typing indicators this socket left behind (tracked even for masquerade).
+  for (const [channelId, typers] of typingByChannel) {
+    if (typers.has(userId)) stopTyping(io, channelId, userId);
+  }
+  // Masquerade never registered presence, so there's nothing to tear down.
+  if (socket.data.masquerading) return;
+
   const key = `${orchardId}:${userId}`;
   const sockets = liveByOrchard.get(key);
   if (sockets) {
@@ -154,10 +166,6 @@ async function onDisconnect(io: IOServer, socket: IOSocket, userId: ID, orchardI
     await users.setStatus(userId, "offline");
   } else {
     userSocketCount.set(userId, remaining);
-  }
-
-  for (const [channelId, typers] of typingByChannel) {
-    if (typers.has(userId)) stopTyping(io, channelId, userId);
   }
 }
 
@@ -192,6 +200,7 @@ export function attachSockets(io: IOServer): void {
         }
         socket.data.userId = scope.userId;
         socket.data.orchardId = scope.orchardId;
+        socket.data.masquerading = scope.masquerading;
         next();
       } catch (err) {
         next(err instanceof Error ? err : new Error("Auth failed"));

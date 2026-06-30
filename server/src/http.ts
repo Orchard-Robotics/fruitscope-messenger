@@ -7,10 +7,12 @@ import { z } from "zod";
 import type { Orchard } from "@shared/index";
 import type { AuthedRequest } from "./auth";
 import {
+  clearSessionMasquerade,
   createSession,
   deleteSession,
   requireAuth,
   sessionCookieOptions,
+  setSessionMasquerade,
   tokenFromRequest,
 } from "./auth";
 import {
@@ -259,8 +261,74 @@ api.delete("/me/avatar", requireAuth, async (req, res) => {
 });
 
 api.get("/bootstrap", requireAuth, async (req, res) => {
-  const { userId, orchardId } = (req as AuthedRequest).scope;
-  res.json(await bootstrap(userId, orchardId));
+  const scope = (req as AuthedRequest).scope;
+  const data = await bootstrap(scope.userId, scope.orchardId);
+  // The bootstrap above is the EFFECTIVE (masqueraded) user's view; flag it so
+  // the client can show the "viewing as" banner with the real admin's name.
+  if (scope.masquerading) {
+    data.masquerade = { realName: (await users.displayName(scope.realUserId)) ?? "Admin" };
+  }
+  res.json(data);
+});
+
+/* ------------------------------------------------------------------ */
+/* Admin — user management + masquerade ("view as another user")        */
+/* All gated on the REAL signed-in user being a super admin, so they    */
+/* still work while masquerading (to switch target or exit).            */
+/* ------------------------------------------------------------------ */
+
+async function requireRealAdmin(
+  req: import("express").Request,
+  res: import("express").Response,
+  next: import("express").NextFunction,
+): Promise<void> {
+  const scope = (req as AuthedRequest).scope;
+  if (!(await users.isSuperAdmin(scope.realUserId))) {
+    res.status(403).json({ error: "Admins only" });
+    return;
+  }
+  next();
+}
+
+/** Every real user + their orchards/roles — for the User Management page. */
+api.get("/admin/users", requireAuth, requireRealAdmin, async (_req, res) => {
+  res.json({ users: await users.allForAdmin() });
+});
+
+const masqueradeSchema = z.object({ userId: z.string().min(1) });
+
+/** Start masquerading as another user (their orchard, identity, permissions). */
+api.post("/admin/masquerade", requireAuth, requireRealAdmin, async (req, res) => {
+  const parsed = masqueradeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request" });
+    return;
+  }
+  const scope = (req as AuthedRequest).scope;
+  const targetId = parsed.data.userId;
+  if (targetId === scope.realUserId) {
+    res.status(400).json({ error: "You can't masquerade as yourself" });
+    return;
+  }
+  const target = await users.byId(targetId);
+  if (!target || target.isBot) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  // Act in the target's own orchard (their first membership).
+  const [targetOrchard] = await orchards.forUser(targetId);
+  if (!targetOrchard) {
+    res.status(400).json({ error: "That user isn't in any orchard" });
+    return;
+  }
+  await setSessionMasquerade(tokenFromRequest(req) as string, targetId, targetOrchard.id);
+  res.json({ ok: true });
+});
+
+/** Stop masquerading — back to the admin's own identity. */
+api.post("/admin/masquerade/stop", requireAuth, requireRealAdmin, async (req, res) => {
+  await clearSessionMasquerade(tokenFromRequest(req) as string);
+  res.json({ ok: true });
 });
 
 /**
@@ -299,7 +367,8 @@ const switchSchema = z.object({ orchardId: z.string().min(1) });
 /** Re-scope the session to another orchard (super admins anywhere; others to
  *  orchards they belong to). Returns the new active orchard. */
 api.post("/orchards/switch", requireAuth, async (req, res) => {
-  const { userId } = (req as AuthedRequest).scope;
+  const scope = (req as AuthedRequest).scope;
+  const userId = scope.userId; // effective user
   const parsed = switchSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid orchard" });
@@ -316,6 +385,14 @@ api.post("/orchards/switch", requireAuth, async (req, res) => {
   const allowed = isAdmin || (await orchards.isMember(target.id, userId));
   if (!allowed) {
     res.status(403).json({ error: "You don't have access to that orchard" });
+    return;
+  }
+
+  // While masquerading, just move the EFFECTIVE orchard — keep the same session
+  // (still owned by the admin) so the masquerade isn't lost.
+  if (scope.masquerading) {
+    await setSessionMasquerade(tokenFromRequest(req) as string, userId, target.id);
+    res.json({ orchard: target });
     return;
   }
 

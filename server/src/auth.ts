@@ -6,8 +6,14 @@ import { isProd, SESSION_COOKIE } from "./env";
 import { prisma } from "./prisma";
 
 export interface SessionScope {
+  /** Effective user — the masqueraded user when masquerading, else the real one. */
   userId: ID;
+  /** Effective orchard — the masquerade orchard when masquerading, else the real one. */
   orchardId: ID;
+  /** The real signed-in user (the admin, when masquerading). */
+  realUserId: ID;
+  /** Whether this session is currently masquerading as another user. */
+  masquerading: boolean;
 }
 
 /** 30 days — the messenger session outlives any single OIDC token exchange. */
@@ -23,10 +29,41 @@ export async function deleteSession(token: string): Promise<void> {
   await prisma.session.deleteMany({ where: { token } });
 }
 
-/** A session is bound to a single orchard — that is the scope of everything. */
+/** Start masquerading: the session now ACTS as another user in their orchard. */
+export async function setSessionMasquerade(
+  token: string,
+  masqueradeUserId: ID,
+  masqueradeOrchardId: ID,
+): Promise<void> {
+  await prisma.session.updateMany({
+    where: { token },
+    data: { masqueradeUserId, masqueradeOrchardId },
+  });
+}
+
+/** Stop masquerading: restore the session to the real admin's own identity. */
+export async function clearSessionMasquerade(token: string): Promise<void> {
+  await prisma.session.updateMany({
+    where: { token },
+    data: { masqueradeUserId: null, masqueradeOrchardId: null },
+  });
+}
+
+/**
+ * Resolve a session to its EFFECTIVE scope. While masquerading, the effective
+ * user/orchard are the masquerade targets; the real admin is kept for gating
+ * admin actions (you stay an admin even while viewing as a non-admin) + restore.
+ */
 export async function resolveToken(token: string): Promise<SessionScope | undefined> {
   const session = await prisma.session.findUnique({ where: { token } });
-  return session ? { userId: session.userId, orchardId: session.orchardId } : undefined;
+  if (!session) return undefined;
+  const masquerading = !!session.masqueradeUserId;
+  return {
+    userId: session.masqueradeUserId ?? session.userId,
+    orchardId: session.masqueradeOrchardId ?? session.orchardId,
+    realUserId: session.userId,
+    masquerading,
+  };
 }
 
 /** Cookie attributes for the session cookie (and for clearing it). */

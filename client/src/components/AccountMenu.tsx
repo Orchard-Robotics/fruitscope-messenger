@@ -1,8 +1,9 @@
-import { Image, LogOut, Settings } from "lucide-react";
+import { Image, LogOut, Settings, Users } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import type { User, UserStatus } from "@shared/index";
 import { cn } from "@/lib/cn";
+import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
 
 const STATUS: Record<UserStatus, { label: string; dot: string }> = {
@@ -17,15 +18,19 @@ export function AccountMenu({
   onClose,
   onOpenPrefs,
   onEditProfile,
+  onOpenUserManagement,
   onSignOut,
 }: {
   me: User;
   onClose: () => void;
   onOpenPrefs: () => void;
   onEditProfile: () => void;
+  onOpenUserManagement: () => void;
   onSignOut: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Effective admin: hidden automatically while masquerading as a non-admin.
+  const isSuperAdmin = useChatStore((s) => s.isSuperAdmin);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -63,6 +68,13 @@ export function AccountMenu({
 
       <Item icon={Settings} label="Preferences" onClick={() => { onClose(); onOpenPrefs(); }} />
       <Item icon={Image} label="Edit profile picture" onClick={() => { onClose(); onEditProfile(); }} />
+
+      {isSuperAdmin && (
+        <>
+          <div className="my-1 h-px bg-line" />
+          <Item icon={Users} label="User management" onClick={() => { onClose(); onOpenUserManagement(); }} />
+        </>
+      )}
 
       <div className="my-1 h-px bg-line" />
 

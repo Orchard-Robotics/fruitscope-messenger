@@ -18,6 +18,7 @@ export function TopBar({
   onOpenNav,
   onOpenPrefs,
   onEditProfile,
+  onOpenUserManagement,
   onSignOut,
 }: {
   me: User;
@@ -25,6 +26,7 @@ export function TopBar({
   onOpenNav: () => void;
   onOpenPrefs: () => void;
   onEditProfile: () => void;
+  onOpenUserManagement: () => void;
   onSignOut: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -81,6 +83,7 @@ export function TopBar({
             onClose={() => setMenuOpen(false)}
             onOpenPrefs={onOpenPrefs}
             onEditProfile={onEditProfile}
+            onOpenUserManagement={onOpenUserManagement}
             onSignOut={onSignOut}
           />
         )}

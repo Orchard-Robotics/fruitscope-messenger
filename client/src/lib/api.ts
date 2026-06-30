@@ -1,4 +1,4 @@
-import type { Bootstrap, Message, Orchard, User } from "@shared/index";
+import type { AdminUser, Bootstrap, Message, Orchard, User } from "@shared/index";
 
 /** Full-page navigation target that starts the "Sign in with FruitScope" flow. */
 export const LOGIN_URL = "/api/auth/login";
@@ -53,4 +53,17 @@ export const rest = {
       body: JSON.stringify({ orchardId }),
     }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
+
+  /* ---- admin: user management + masquerade ---- */
+  /** Every user (+ orchards/roles) — for the admin User Management page. */
+  adminUsers: async (): Promise<AdminUser[]> =>
+    (await request<{ users: AdminUser[] }>("/admin/users")).users,
+  /** Start masquerading as another user; reload the app to take effect. */
+  masquerade: (userId: string) =>
+    request<{ ok: true }>("/admin/masquerade", {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+  /** Stop masquerading. */
+  stopMasquerade: () => request<{ ok: true }>("/admin/masquerade/stop", { method: "POST" }),
 };

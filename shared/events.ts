@@ -74,4 +74,6 @@ export interface SocketData {
   userId: ID;
   /** The orchard this socket is scoped to — every operation is bound to it. */
   orchardId: ID;
+  /** True when an admin is masquerading — used to suppress fake presence. */
+  masquerading: boolean;
 }

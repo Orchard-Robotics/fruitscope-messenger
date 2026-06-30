@@ -6,7 +6,9 @@ import { signOut } from "@/lib/session";
 import { useChatStore } from "@/store/store";
 import { ChannelHeader } from "./ChannelHeader";
 import { Composer } from "./Composer";
+import { MasqueradeBanner } from "./MasqueradeBanner";
 import { MessageList } from "./MessageList";
+import { UserManagementModal } from "./UserManagementModal";
 
 // Code-split: the Canary panel pulls in the AI SDK + markdown renderer, which
 // shouldn't weigh down the initial chat bundle. It loads when first opened.
@@ -36,6 +38,7 @@ export function Workspace() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [usersOpen, setUsersOpen] = useState(false);
 
   // Cmd/Ctrl+K opens search (Slack's quick switcher shortcut).
   useEffect(() => {
@@ -60,6 +63,7 @@ export function Workspace() {
 
   return (
     <div className="relative z-10 flex h-dvh flex-col overflow-hidden">
+      <MasqueradeBanner />
       {me && (
         <TopBar
           me={me}
@@ -67,6 +71,7 @@ export function Workspace() {
           onOpenNav={() => setNavOpen(true)}
           onOpenPrefs={() => setPrefsOpen(true)}
           onEditProfile={() => setProfileOpen(true)}
+          onOpenUserManagement={() => setUsersOpen(true)}
           onSignOut={() => void signOut()}
         />
       )}
@@ -113,6 +118,7 @@ export function Workspace() {
         }}
       />
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
+      <UserManagementModal open={usersOpen} onClose={() => setUsersOpen(false)} />
     </div>
   );
 }

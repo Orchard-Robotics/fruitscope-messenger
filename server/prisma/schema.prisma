@@ -142,8 +142,15 @@ model Reaction {
 
 model Session {
   token     String   @id
+  // The real signed-in user + their orchard. These never change while a session
+  // is masquerading — they identify the actual admin so we can restore + audit.
   userId    String
   orchardId String
+  // Masquerade: when a (super) admin is "viewing as" another user, the session
+  // ACTS as masqueradeUserId in masqueradeOrchardId. The effective identity is
+  // the masquerade fields when set, else userId/orchardId.
+  masqueradeUserId    String?
+  masqueradeOrchardId String?
   createdAt DateTime @default(now())
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
