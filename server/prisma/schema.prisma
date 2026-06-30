@@ -61,6 +61,11 @@ model User {
   // only — it is NEVER sent to the browser.
   fruitscopeAuthJwt          String?
   fruitscopeAuthJwtExpiresAt DateTime?
+  // Fallback cache of the user's accessible orchards ([{code,name}]) — the last
+  // successful FruitScope /user-info result, seeded at login from the OIDC claim.
+  // Used ONLY to keep the Canary orchard picker working when /user-info is
+  // unreachable; FruitScope stays the source of truth and the access gate.
+  fruitscopeOrchardsCache    Json?
   hue         Int
   // GCS object key of the uploaded profile picture (e.g. "avatars/<id>-<rand>.webp"),
   // or null for none. The public URL is built from MEDIA_PUBLIC_BASE at read time

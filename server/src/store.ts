@@ -89,6 +89,29 @@ function hashHue(seed: string): number {
   return h;
 }
 
+/** A minimal orchard for the picker / fallback cache. */
+export interface OrchardLite {
+  code: string;
+  name: string;
+}
+
+/** Seed list of accessible orchards from the OIDC claim (codes; primary has a name). */
+function seedOrchardsFromIdentity(identity: FruitscopeIdentity): OrchardLite[] {
+  const byCode = new Map<string, string>();
+  for (const code of identity.orchardCodes) byCode.set(code, code);
+  if (identity.primaryOrchard) byCode.set(identity.primaryOrchard.code, identity.primaryOrchard.name);
+  return [...byCode].map(([code, name]) => ({ code, name }));
+}
+
+/** Coerce a stored JSON value back into a clean OrchardLite[] (or null). */
+function parseOrchardsCache(raw: unknown): OrchardLite[] | null {
+  if (!Array.isArray(raw)) return null;
+  const list = raw
+    .filter((x): x is { code: string; name?: unknown } => !!x && typeof x === "object" && typeof (x as { code?: unknown }).code === "string")
+    .map((x) => ({ code: x.code, name: typeof x.name === "string" && x.name ? x.name : x.code }));
+  return list.length ? list : null;
+}
+
 /** Reduce an arbitrary handle to the allowed username charset. */
 function sanitizeHandle(raw: string): string {
   const cleaned = raw
@@ -206,6 +229,11 @@ export const users = {
         }
       : {};
 
+    // Seed the orchard fallback cache from the claim on first login (or if it was
+    // never populated); a successful /user-info later overwrites it with names.
+    const seed = seedOrchardsFromIdentity(identity) as unknown as Prisma.InputJsonValue;
+    const seedLen = seedOrchardsFromIdentity(identity).length;
+
     const existing = await prisma.user.findUnique({ where: { oidcSub: identity.sub } });
     if (existing) {
       const row = await prisma.user.update({
@@ -215,6 +243,9 @@ export const users = {
           email: identity.email ?? null,
           isSuperAdmin: identity.isSuperAdmin,
           ...jwtData,
+          ...(existing.fruitscopeOrchardsCache == null && seedLen
+            ? { fruitscopeOrchardsCache: seed }
+            : {}),
         },
       });
       return mapUser(row);
@@ -233,6 +264,7 @@ export const users = {
         isSuperAdmin: identity.isSuperAdmin,
         hue: hashHue(identity.sub),
         ...jwtData,
+        ...(seedLen ? { fruitscopeOrchardsCache: seed } : {}),
       },
     });
     return mapUser(row);
@@ -250,6 +282,23 @@ export const users = {
       return null;
     }
     return row.fruitscopeAuthJwt;
+  },
+
+  /** The cached accessible-orchard fallback list (or null if we have none). */
+  fruitscopeOrchards: async (id: ID): Promise<OrchardLite[] | null> => {
+    const row = await prisma.user.findUnique({
+      where: { id },
+      select: { fruitscopeOrchardsCache: true },
+    });
+    return parseOrchardsCache(row?.fruitscopeOrchardsCache);
+  },
+
+  /** Refresh the fallback cache after a successful /user-info fetch. */
+  setFruitscopeOrchards: async (id: ID, list: OrchardLite[]): Promise<void> => {
+    await prisma.user.update({
+      where: { id },
+      data: { fruitscopeOrchardsCache: list as unknown as Prisma.InputJsonValue },
+    });
   },
 
   setStatus: async (id: ID, status: UserStatus): Promise<User | undefined> => {
