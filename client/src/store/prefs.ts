@@ -6,17 +6,26 @@ interface Persisted {
   theme: Theme;
   compact: boolean;
   reduceMotion: boolean;
+  /** Admins-only: show Canary's debug context (prompt/context/token usage). */
+  showCanaryDebug: boolean;
 }
 
 interface PrefsState extends Persisted {
   setTheme: (theme: Theme) => void;
   setCompact: (compact: boolean) => void;
   setReduceMotion: (reduceMotion: boolean) => void;
+  setShowCanaryDebug: (showCanaryDebug: boolean) => void;
 }
 
 const KEY = "fruitscope.prefs";
 // Default to light; users can switch to Dark or System in the menu.
-const DEFAULTS: Persisted = { theme: "light", compact: false, reduceMotion: false };
+// Admins see Canary debug context by default; they can toggle it off.
+const DEFAULTS: Persisted = {
+  theme: "light",
+  compact: false,
+  reduceMotion: false,
+  showCanaryDebug: true,
+};
 
 function loadPrefs(): Persisted {
   try {
@@ -31,7 +40,7 @@ const systemDark = (): boolean =>
   typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches;
 
 /** Reflect preferences onto <html> via the class + data attributes the CSS keys off. */
-export function applyPrefs(p: Persisted): void {
+export function applyPrefs(p: Pick<Persisted, "theme" | "compact" | "reduceMotion">): void {
   const root = document.documentElement;
   const dark = p.theme === "dark" || (p.theme === "system" && systemDark());
   root.classList.toggle("dark", dark);
@@ -50,8 +59,8 @@ function persist(p: Persisted): void {
 export const usePrefs = create<PrefsState>((set, get) => {
   const update = (partial: Partial<Persisted>): void => {
     set(partial);
-    const { theme, compact, reduceMotion } = get();
-    const next: Persisted = { theme, compact, reduceMotion };
+    const { theme, compact, reduceMotion, showCanaryDebug } = get();
+    const next: Persisted = { theme, compact, reduceMotion, showCanaryDebug };
     persist(next);
     applyPrefs(next);
   };
@@ -60,6 +69,7 @@ export const usePrefs = create<PrefsState>((set, get) => {
     setTheme: (theme) => update({ theme }),
     setCompact: (compact) => update({ compact }),
     setReduceMotion: (reduceMotion) => update({ reduceMotion }),
+    setShowCanaryDebug: (showCanaryDebug) => update({ showCanaryDebug }),
   };
 });
 

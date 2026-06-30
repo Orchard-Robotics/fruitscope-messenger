@@ -27,9 +27,13 @@ export interface UIMessage {
   parts: UIPart[];
 }
 
+/** Data parts a normal user is meant to see; everything else is debug/internal. */
+const USER_FACING_DATA = new Set(["citations", "plan", "questions"]);
+
 /** One chat message. User messages are right-aligned bubbles; Canary's answers
- *  render every part type (text, reasoning, tool calls, structured data). */
-export function CanaryMessage({ message }: { message: UIMessage }) {
+ *  render every part type (text, reasoning, tool calls, structured data).
+ *  `showDebug` gates internal/debug data parts (admins only, toggleable). */
+export function CanaryMessage({ message, showDebug }: { message: UIMessage; showDebug: boolean }) {
   if (message.role === "user") {
     const text = message.parts
       .filter((p) => p.type === "text")
@@ -49,14 +53,14 @@ export function CanaryMessage({ message }: { message: UIMessage }) {
       <CanaryAvatar size={30} className="mt-0.5" />
       <div className="min-w-0 flex-1 space-y-2">
         {message.parts.map((part, i) => (
-          <Part key={i} part={part} />
+          <Part key={i} part={part} showDebug={showDebug} />
         ))}
       </div>
     </div>
   );
 }
 
-function Part({ part }: { part: UIPart }) {
+function Part({ part, showDebug }: { part: UIPart; showDebug: boolean }) {
   const { type } = part;
 
   if (type === "text") {
@@ -87,7 +91,11 @@ function Part({ part }: { part: UIPart }) {
   }
 
   if (type.startsWith("data-")) {
-    return <DataPart name={type.slice("data-".length)} data={part.data} />;
+    const name = type.slice("data-".length);
+    // Debug/internal context (debug-prompt, debug-context, context-usage, …) is
+    // hidden unless an admin has it toggled on. Non-admins never see it.
+    if (!USER_FACING_DATA.has(name) && !showDebug) return null;
+    return <DataPart name={name} data={part.data} />;
   }
 
   if (type.startsWith("tool-") || type === "dynamic-tool") {

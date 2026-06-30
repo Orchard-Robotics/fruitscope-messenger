@@ -2,6 +2,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import {
   ArrowUp,
+  Bug,
   Leaf,
   Loader2,
   MapPin,
@@ -17,6 +18,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { cn } from "@/lib/cn";
 import { type CanaryBlock, CanaryError, canaryApi, chatApiPath } from "@/lib/canary";
 import { useCanaryUi } from "@/store/canary";
+import { usePrefs } from "@/store/prefs";
 import { useChatStore } from "@/store/store";
 import { CanaryAvatar } from "./CanaryAvatar";
 import { CanaryMessage, type UIMessage } from "./CanaryMessage";
@@ -50,6 +52,11 @@ function toUiMessage(m: { role: "user" | "assistant"; content: unknown }): UIMes
 export function CanaryPanel() {
   const storeOrchard = useChatStore((s) => s.orchard);
   const canUseGeneralMode = useChatStore((s) => s.canUseGeneralMode);
+  // Effective admin (false while masquerading as a non-admin) gates debug context.
+  const isSuperAdmin = useChatStore((s) => s.isSuperAdmin);
+  const showCanaryDebug = usePrefs((s) => s.showCanaryDebug);
+  const setShowCanaryDebug = usePrefs((s) => s.setShowCanaryDebug);
+  const showDebug = isSuperAdmin && showCanaryDebug;
 
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<{ message: string; reconnect: boolean } | null>(null);
@@ -357,6 +364,9 @@ export function CanaryPanel() {
           block ? (scanSel.label ? `${block.blockName} · ${scanSel.label}` : block.blockName) : "All blocks"
         }
         onOpenBlocks={() => setBlockModalOpen(true)}
+        canDebug={isSuperAdmin}
+        debugOn={showCanaryDebug}
+        onToggleDebug={() => setShowCanaryDebug(!showCanaryDebug)}
         onNewChat={newChat}
       />
 
@@ -369,6 +379,7 @@ export function CanaryPanel() {
             thinking={status === "submitted"}
             general={general}
             block={block}
+            showDebug={showDebug}
           />
           {error && (
             <div className="mx-4 mb-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div>
@@ -410,6 +421,9 @@ function Header({
   onOrchard,
   blockLabel,
   onOpenBlocks,
+  canDebug,
+  debugOn,
+  onToggleDebug,
   onNewChat,
 }: {
   mode: Mode;
@@ -421,6 +435,9 @@ function Header({
   onOrchard: (code: string) => void;
   blockLabel: string;
   onOpenBlocks: () => void;
+  canDebug: boolean;
+  debugOn: boolean;
+  onToggleDebug: () => void;
   onNewChat: () => void;
 }) {
   return (
@@ -461,6 +478,21 @@ function Header({
             <Sparkles className="size-3.5" />
             General chat
           </span>
+        )}
+
+        {canDebug && (
+          <button
+            onClick={onToggleDebug}
+            title={debugOn ? "Hide debug context" : "Show debug context"}
+            className={cn(
+              "grid size-8 shrink-0 place-items-center rounded-lg border transition",
+              debugOn
+                ? "border-brand-300 bg-brand-500/10 text-brand-700"
+                : "border-line bg-surface text-ink-faint hover:bg-surface-2 hover:text-ink",
+            )}
+          >
+            <Bug className="size-4" />
+          </button>
         )}
 
         <button
@@ -576,11 +608,13 @@ function Thread({
   thinking,
   general,
   block,
+  showDebug,
 }: {
   messages: UIMessage[];
   thinking: boolean;
   general: boolean;
   block: CanaryBlock | null;
+  showDebug: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -592,7 +626,7 @@ function Thread({
     <div ref={ref} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6">
       {messages.length === 0 && !thinking && <Welcome general={general} block={block} />}
       {messages.map((m) => (
-        <CanaryMessage key={m.id} message={m} />
+        <CanaryMessage key={m.id} message={m} showDebug={showDebug} />
       ))}
       {thinking && (
         <div className="flex items-center gap-3 text-ink-dim">
