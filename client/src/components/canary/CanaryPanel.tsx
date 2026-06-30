@@ -86,12 +86,6 @@ export function CanaryPanel() {
     [orchard],
   );
 
-  const { messages, sendMessage, setMessages, status, stop } = useChat({
-    transport,
-    onError: (err) => setError(extractError(err)),
-    onFinish: () => void refreshConversations(orchard),
-  });
-
   const refreshConversations = useCallback(async (code: string) => {
     if (!code) return;
     try {
@@ -100,6 +94,19 @@ export function CanaryPanel() {
       /* non-fatal — the rail just stays as-is */
     }
   }, []);
+
+  // Stable callbacks so `useChat`'s returned helpers don't change identity each
+  // render (which would re-fire effects that depend on them).
+  const onChatError = useCallback((err: unknown) => setError(extractError(err)), []);
+  const orchardRef = useRef(orchard);
+  orchardRef.current = orchard;
+  const onChatFinish = useCallback(() => void refreshConversations(orchardRef.current), [refreshConversations]);
+
+  const { messages, sendMessage, setMessages, status, stop } = useChat({
+    transport,
+    onError: onChatError,
+    onFinish: onChatFinish,
+  });
 
   /* Load the orchard list. On success, default to the messenger's current
    * orchard (or the only one); leave unset for multi-orchard users so they
@@ -156,7 +163,10 @@ export function CanaryPanel() {
     return () => {
       alive = false;
     };
-  }, [orchard, general, setMessages]);
+    // setMessages is stable in practice; keep it out of deps so an unstable
+    // identity can never turn this fetch into a render loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orchard, general]);
 
   /* ----- actions ----- */
 
@@ -378,7 +388,7 @@ function Header({
   onNewChat: () => void;
 }) {
   return (
-    <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-raised/70 px-3 py-2.5 backdrop-blur-xl sm:px-5">
+    <header className="relative z-30 flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-raised/70 px-3 py-2.5 backdrop-blur-xl sm:px-5">
       <button
         onClick={onToggleRail}
         className="grid size-8 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2 hover:text-ink"

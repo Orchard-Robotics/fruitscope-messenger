@@ -62,24 +62,30 @@ function cookieHeader(authJwt: string, jar?: Map<string, string>): string {
 }
 
 /**
- * The user's primary orchard code, decoded from the `auth_jwt` payload (`db`).
- * Not verified — we already trust the token (we minted nothing); we only read a
- * claim. Used to seed `/user-info`, which requires an `orchard_code`.
+ * Read the `auth_jwt` payload (not verified — we already trust the token; we only
+ * read claims off it, e.g. the primary orchard and admin flag).
  */
-function jwtPrimaryOrchard(jwt: string): string | null {
+function jwtPayload(jwt: string): { db?: unknown; orchard?: unknown; is_admin?: unknown } | null {
   try {
     const part = jwt.split(".")[1];
     if (!part) return null;
-    const payload = JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as {
-      db?: unknown;
-      orchard?: unknown;
-    };
-    if (typeof payload.db === "string" && payload.db) return payload.db;
-    if (typeof payload.orchard === "string" && payload.orchard) return payload.orchard;
-    return null;
+    return JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as Record<string, unknown>;
   } catch {
     return null;
   }
+}
+
+/** The user's primary orchard code (`db`), used to seed `/user-info`. */
+function jwtPrimaryOrchard(jwt: string): string | null {
+  const p = jwtPayload(jwt);
+  if (typeof p?.db === "string" && p.db) return p.db;
+  if (typeof p?.orchard === "string" && p.orchard) return p.orchard;
+  return null;
+}
+
+/** Whether the token's owner is a FruitScope admin. */
+function jwtIsAdmin(jwt: string): boolean {
+  return jwtPayload(jwt)?.is_admin === true;
 }
 
 /** Best-effort error message from an upstream JSON/text body. */
@@ -150,7 +156,12 @@ async function call(
  * has no access to that orchard, (401) when the token is rejected.
  */
 async function switchOrchard(authJwt: string, orchardCode: string): Promise<Map<string, string>> {
-  const res = await call("POST", "/switch-orchard", orchardCode, cookieHeader(authJwt), {
+  // Admins must use /admin/switch-orchard: the public /switch-orchard enforces
+  // explicit per-orchard access (has_any_orchard_access), which an admin can lack
+  // even though they can use every orchard. The admin endpoint is gated on the
+  // token's admin flag and switches anywhere.
+  const path = jwtIsAdmin(authJwt) ? "/admin/switch-orchard" : "/switch-orchard";
+  const res = await call("POST", path, orchardCode, cookieHeader(authJwt), {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ orchard_code: orchardCode }),
   });
