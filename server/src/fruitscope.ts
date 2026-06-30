@@ -464,27 +464,42 @@ export async function chat(
   return res;
 }
 
+/** A collected Canary turn: the user-facing answer and the model's hidden
+ *  "thinking" (reasoning + status commentary), kept separate so the channel
+ *  agent can post a clean reply and stash the thinking for admins only. */
+export interface CollectedChat {
+  answer: string;
+  /** Reasoning + status commentary, or empty if the model emitted none. */
+  reasoning: string;
+}
+
+// Zero-width space (U+200B): FruitScope prefixes the model's running status
+// commentary text blocks with it, marking them as "thinking", not answer.
+const ZW = 0x200b;
+
 /**
  * Like `chat()`, but consumes the SSE stream server-side and returns the
- * assembled answer text — for the in-channel Canary agent, which posts a normal
- * chat message instead of streaming to a browser.
+ * assembled answer + thinking — for the in-channel Canary agent, which posts a
+ * normal chat message instead of streaming to a browser.
+ *
+ * Text streams as blocks keyed by id (text-start/-delta/-end). The status
+ * commentary arrives as separate text blocks whose first char is U+200B, and
+ * the chain-of-thought as `reasoning-delta` frames. The un-prefixed text blocks
+ * are the actual answer; everything else is "thinking" — mirrors the browser's
+ * CanaryMessage rendering.
  */
 export async function chatCollect(
   authJwt: string,
   orchardCode: string,
   body: unknown,
-): Promise<string> {
+): Promise<CollectedChat> {
   const res = await chat(authJwt, orchardCode, body);
-  if (!res.body) return "";
+  if (!res.body) return { answer: "", reasoning: "" };
   const reader = (res.body as ReadableStream<Uint8Array>).getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  // Text streams as one or more blocks keyed by id (text-start/-delta/-end).
-  // FruitScope emits the model's running status commentary as separate blocks
-  // whose text begins with a zero-width space (U+200B); only the un-prefixed
-  // block(s) are the actual answer. Accumulate per id so we can drop the status
-  // blocks afterward — mirrors the browser's CanaryMessage rendering.
-  const blocks = new Map<string, string>();
+  const textBlocks = new Map<string, string>(); // text-delta, keyed by block id
+  const reasonBlocks = new Map<string, string>(); // reasoning-delta, keyed by id
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -500,19 +515,34 @@ export async function chatCollect(
         if (!payload || payload === "[DONE]") continue;
         try {
           const obj = JSON.parse(payload) as { type?: string; id?: string; delta?: string };
-          if (obj.type === "text-delta" && typeof obj.delta === "string") {
-            const id = obj.id ?? "";
-            blocks.set(id, (blocks.get(id) ?? "") + obj.delta);
-          }
+          if (typeof obj.delta !== "string") continue;
+          const id = obj.id ?? "";
+          if (obj.type === "text-delta") textBlocks.set(id, (textBlocks.get(id) ?? "") + obj.delta);
+          else if (obj.type === "reasoning-delta")
+            reasonBlocks.set(id, (reasonBlocks.get(id) ?? "") + obj.delta);
         } catch {
           /* ignore non-JSON frames */
         }
       }
     }
   }
-  // Keep only answer blocks; drop U+200B-prefixed status commentary.
-  return [...blocks.values()]
-    .filter((t) => !t.startsWith("\u200b"))
+
+  const all = [...textBlocks.values()];
+  const zw = String.fromCharCode(ZW);
+  // Answer = un-prefixed text blocks. Thinking = reasoning + the U+200B status
+  // blocks (with the marker stripped for readability).
+  const answer = all
+    .filter((t) => t.charCodeAt(0) !== ZW)
     .join("\n\n")
     .trim();
+  const statusLines = all
+    .filter((t) => t.charCodeAt(0) === ZW)
+    .map((t) => t.split(zw).join("").trim())
+    .filter(Boolean);
+  const reasoning = [...reasonBlocks.values(), ...statusLines]
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+  return { answer, reasoning };
 }

@@ -2,6 +2,7 @@ import type { Server } from "socket.io";
 
 import type { ClientToServerEvents, ID, ServerToClientEvents, SocketData } from "@shared/index";
 import * as fs from "./fruitscope";
+import { emitMessage } from "./messageEmit";
 import { CANARY, channels, messages, orchards, users } from "./store";
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -31,9 +32,11 @@ async function withNames(content: string, name: (id: ID) => Promise<string>): Pr
  * Canary bot. Best-effort — any failure posts a short apology instead.
  */
 export async function respondAsCanary(io: IO, channelId: ID, senderId: ID): Promise<void> {
-  const post = async (text: string): Promise<void> => {
-    const msg = await messages.create(channelId, CANARY.id, text);
-    io.to(chanRoom(channelId)).emit("message:new", msg);
+  const post = async (text: string, reasoning?: string): Promise<void> => {
+    const msg = await messages.create(channelId, CANARY.id, text, reasoning ?? null);
+    // Reasoning-bearing replies fan out per-socket so only admins receive the
+    // thinking; plain apologies take the fast path.
+    await emitMessage(io, channelId, "message:new", msg);
   };
   const typing = (on: boolean): void => {
     io.to(chanRoom(channelId)).emit("typing:update", { channelId, userIds: on ? [CANARY.id] : [] });
@@ -80,14 +83,17 @@ export async function respondAsCanary(io: IO, channelId: ID, senderId: ID): Prom
       `Recent conversation:\n${lines.join("\n")}\n\nYour reply:`;
 
     const ctx = await fs.prepareContext(jwt, orchardCode, { general_mode: false, canary_mode: 5 });
-    const reply = await fs.chatCollect(jwt, orchardCode, {
+    const { answer, reasoning } = await fs.chatCollect(jwt, orchardCode, {
       messages: [{ role: "user", parts: [{ type: "text", text: prompt }] }],
       session_id: ctx.session_id,
       current_view: { block_name: null, scan_ids: null, sub_block_id: null, scan_label: null },
     });
 
     typing(false);
-    await post(reply || "I’m not sure how to help with that yet — could you give me a bit more detail?");
+    await post(
+      answer || "I’m not sure how to help with that yet — could you give me a bit more detail?",
+      reasoning,
+    );
   } catch (err) {
     console.warn("[canary-agent] failed:", err instanceof Error ? err.message : err);
     typing(false);

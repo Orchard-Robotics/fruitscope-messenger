@@ -80,6 +80,9 @@ function mapMessage(row: DbMessage): Message {
     createdAt: row.createdAt.getTime(),
     editedAt: row.editedAt ? row.editedAt.getTime() : null,
     reactions,
+    // Admin-only Canary thinking. The socket layer strips this before it reaches
+    // non-admin recipients (see redactMessage), so non-admins never receive it.
+    canaryReasoning: row.canaryReasoning,
   };
 }
 
@@ -544,9 +547,20 @@ export const messages = {
     return { messages: pageRows.reverse().map(mapMessage), hasMore };
   },
 
-  create: async (channelId: ID, authorId: ID, content: string): Promise<Message> => {
+  create: async (
+    channelId: ID,
+    authorId: ID,
+    content: string,
+    canaryReasoning?: string | null,
+  ): Promise<Message> => {
     const row = await prisma.message.create({
-      data: { id: nanoid(12), channelId, authorId, content },
+      data: {
+        id: nanoid(12),
+        channelId,
+        authorId,
+        content,
+        ...(canaryReasoning ? { canaryReasoning } : {}),
+      },
       include: messageInclude,
     });
     return mapMessage(row);

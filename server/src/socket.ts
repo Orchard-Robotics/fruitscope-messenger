@@ -13,6 +13,7 @@ import { REACTION_EMOJI } from "@shared/index";
 import { resolveToken } from "./auth";
 import { mentionsCanary, respondAsCanary } from "./canaryAgent";
 import { SESSION_COOKIE } from "./env";
+import { emitMessage, redactMessage, redactMessages } from "./messageEmit";
 import { CANARY, canAccess, channels, messages, orchards, reads, users } from "./store";
 
 type InterServerEvents = Record<string, never>;
@@ -202,6 +203,9 @@ export function attachSockets(io: IOServer): void {
         socket.data.userId = scope.userId;
         socket.data.orchardId = scope.orchardId;
         socket.data.masquerading = scope.masquerading;
+        // Effective-user admin flag — gates delivery of Canary's admin-only
+        // in-channel reasoning. False while masquerading as a non-admin.
+        socket.data.isSuperAdmin = await users.isSuperAdmin(scope.userId);
         next();
       } catch (err) {
         next(err instanceof Error ? err : new Error("Auth failed"));
@@ -250,8 +254,10 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
 
     const updated = await messages.toggleReaction(target.id, userId, parsed.data.emoji);
     if (!updated) return ack({ ok: false, error: "Message not found" });
-    io.to(chanRoom(channel.id)).emit("message:updated", updated);
-    ack({ ok: true, data: updated });
+    // Gated emit: a reaction on a Canary reply must not leak its reasoning to
+    // non-admins. The ack goes back to the reactor, redacted unless they're admin.
+    await emitMessage(io, channel.id, "message:updated", updated);
+    ack({ ok: true, data: redactMessage(updated, socket.data.isSuperAdmin) });
   });
 
   socket.on("channel:create", async (payload, ack) => {
@@ -414,7 +420,11 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
       ...(parsed.data.before ? { before: parsed.data.before } : {}),
       limit: HISTORY_PAGE,
     });
-    ack({ ok: true, data: page });
+    // Hide Canary's admin-only reasoning from non-admins in history too.
+    ack({
+      ok: true,
+      data: { ...page, messages: redactMessages(page.messages, socket.data.isSuperAdmin) },
+    });
   });
 
   socket.on("channel:around", async (payload, ack) => {
@@ -426,7 +436,10 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
       return ack({ ok: false, error: "Channel not found" });
     }
     const window = await messages.around(channel.id, parsed.data.cursor, AROUND_HALF);
-    ack({ ok: true, data: window });
+    ack({
+      ok: true,
+      data: { ...window, messages: redactMessages(window.messages, socket.data.isSuperAdmin) },
+    });
   });
 
   socket.on("typing:start", (payload) => {

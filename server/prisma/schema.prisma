@@ -118,6 +118,11 @@ model Message {
   channelId String
   authorId  String
   content   String
+  // Canary's "thinking" (reasoning + status commentary) for in-channel @mention
+  // replies. Admin-only: stripped from the payload for non-admin recipients and
+  // rendered as a collapsible box gated by the admin debug toggle. Null for every
+  // normal message and for Canary DMs (which stream their own reasoning parts).
+  canaryReasoning String?
   createdAt DateTime  @default(now())
   editedAt  DateTime?
 

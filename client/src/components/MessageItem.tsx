@@ -8,6 +8,7 @@ import { timeOfDay } from "@/lib/format";
 import { chat } from "@/lib/socket";
 import { Avatar } from "./Avatar";
 import { CanaryAvatar } from "./canary/CanaryAvatar";
+import { CanaryReasoning } from "./canary/CanaryReasoning";
 import { MessageContent } from "./MessageContent";
 
 const FALLBACK: Pick<User, "displayName" | "hue"> = { displayName: "?", hue: 0 };
@@ -61,6 +62,10 @@ export function MessageItem({ message, author, showHeader, meId, highlighted }: 
         )}
 
         <MessageContent content={message.content} meId={meId} />
+
+        {/* Canary's admin-only thinking (collapsible). Present only for admins —
+            the server strips it for everyone else. */}
+        {message.canaryReasoning && <CanaryReasoning reasoning={message.canaryReasoning} />}
 
         {message.reactions.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1.5">

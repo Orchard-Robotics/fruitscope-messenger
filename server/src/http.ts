@@ -27,6 +27,7 @@ import {
 import type { FruitscopeIdentity } from "./oidc";
 import { beginLogin, completeLogin, decodeTx, encodeTx } from "./oidc";
 import { broadcastUserUpdate } from "./socket";
+import { redactMessages } from "./messageEmit";
 import { bootstrap, channels, messages, orchards, users } from "./store";
 import { deleteObject, uploadObject } from "./storage";
 
@@ -354,7 +355,9 @@ api.get("/search", requireAuth, async (req, res) => {
     q,
     25,
   );
-  res.json({ messages: found });
+  // Hide Canary's admin-only reasoning from non-admin searchers.
+  const isAdmin = await users.isSuperAdmin(userId);
+  res.json({ messages: redactMessages(found, isAdmin) });
 });
 
 /**

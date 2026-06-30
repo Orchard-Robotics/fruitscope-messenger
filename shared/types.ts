@@ -72,6 +72,14 @@ export interface Message {
   createdAt: Timestamp;
   editedAt: Timestamp | null;
   reactions: Reaction[];
+  /**
+   * Canary's "thinking" (reasoning + status commentary) for an in-channel
+   * @mention reply — admin-only. The server NEVER sends this to non-admin
+   * recipients (it's stripped from broadcasts and history alike), so when present
+   * the viewer is an admin; the client shows it as a collapsible box gated by the
+   * debug toggle. Null/absent for every normal message.
+   */
+  canaryReasoning?: string | null;
 }
 
 /**

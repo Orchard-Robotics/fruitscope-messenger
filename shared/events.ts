@@ -76,4 +76,10 @@ export interface SocketData {
   orchardId: ID;
   /** True when an admin is masquerading — used to suppress fake presence. */
   masquerading: boolean;
+  /**
+   * Whether the EFFECTIVE user is a super admin — gates delivery of Canary's
+   * admin-only in-channel reasoning. False while masquerading as a non-admin, so
+   * the impersonated view never leaks debug context.
+   */
+  isSuperAdmin: boolean;
 }
