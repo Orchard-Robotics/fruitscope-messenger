@@ -13,10 +13,11 @@ import {
   Square,
   Trees,
 } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { type CanaryBlock, CanaryError, canaryApi, chatApiPath } from "@/lib/canary";
+import { lazyWithReload } from "@/lib/lazyRetry";
 import { useCanaryUi } from "@/store/canary";
 import { usePrefs } from "@/store/prefs";
 import { useChatStore } from "@/store/store";
@@ -25,7 +26,7 @@ import { CanaryMessage, type UIMessage } from "./CanaryMessage";
 import { PickerMenu } from "./PickerMenu";
 
 // The block selector pulls in MapLibre — load it only when opened.
-const BlockSelectorModal = lazy(() =>
+const BlockSelectorModal = lazyWithReload(() =>
   import("./BlockSelectorModal").then((m) => ({ default: m.BlockSelectorModal })),
 );
 

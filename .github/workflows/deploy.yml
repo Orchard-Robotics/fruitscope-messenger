@@ -133,8 +133,11 @@ jobs:
         run: terraform apply -auto-approve -input=false -lock-timeout=180s -var="container_image=${{ needs.build.outputs.image }}"
 
       # Upload the SPA to the bucket the apply just created/updated. Hashed assets
-      # are immutable; index.html is written last with no-store so each deploy
-      # flips atomically; then stale assets are pruned.
+      # are immutable and uploaded WITHOUT pruning the previous build's chunks —
+      # a tab still on the old index.html must keep loading its lazy chunks until
+      # it next reloads. index.html is written last (no-store) so the new build
+      # goes live atomically. Old chunks are reaped by the bucket's lifecycle rule
+      # (see terraform/frontend.tf), which gives in-flight clients days of grace.
       - name: Publish frontend to GCS
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: ${{ github.workspace }}
@@ -144,5 +147,3 @@ jobs:
             --cache-control="public, max-age=31536000, immutable"
           gcloud storage cp client/dist/index.html "gs://${WEB_BUCKET}/index.html" \
             --cache-control="no-store, max-age=0"
-          gcloud storage rsync -r --delete-unmatched-destination-objects -x '^index\.html$' \
-            client/dist "gs://${WEB_BUCKET}" --cache-control="public, max-age=31536000, immutable"

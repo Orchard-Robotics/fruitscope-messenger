@@ -1,7 +1,8 @@
 import { Loader2, MessageSquareHeart, WifiOff } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 import { channelTitle, isCanaryDm, isSelfDm } from "@/lib/channel";
+import { lazyWithReload } from "@/lib/lazyRetry";
 import { signOut } from "@/lib/session";
 import { useChatStore } from "@/store/store";
 import { ChannelHeader } from "./ChannelHeader";
@@ -12,7 +13,7 @@ import { UserManagementModal } from "./UserManagementModal";
 
 // Code-split: the Canary panel pulls in the AI SDK + markdown renderer, which
 // shouldn't weigh down the initial chat bundle. It loads when first opened.
-const CanaryPanel = lazy(() =>
+const CanaryPanel = lazyWithReload(() =>
   import("./canary/CanaryPanel").then((m) => ({ default: m.CanaryPanel })),
 );
 import { PreferencesModal } from "./PreferencesModal";

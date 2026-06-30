@@ -15,6 +15,20 @@ resource "google_storage_bucket" "web" {
     not_found_page = "index.html"
   }
 
+  # CI publishes new builds without deleting the previous build's hashed chunks,
+  # so a tab still on the old index.html can keep lazy-loading them. This reaps
+  # those orphaned chunks 30 days after upload — long after any open tab would
+  # have reloaded. index.html is re-uploaded every deploy, resetting its age, so
+  # the live shell is never caught by this rule (assuming deploys < 30 days apart).
+  lifecycle_rule {
+    condition {
+      age = 30
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
   depends_on = [google_project_service.services]
 }
 
