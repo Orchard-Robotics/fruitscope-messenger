@@ -12,7 +12,7 @@ import {
   Square,
   Trees,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { type CanaryBlock, CanaryError, canaryApi, chatApiPath } from "@/lib/canary";
@@ -21,6 +21,11 @@ import { useChatStore } from "@/store/store";
 import { CanaryAvatar } from "./CanaryAvatar";
 import { CanaryMessage, type UIMessage } from "./CanaryMessage";
 import { PickerMenu } from "./PickerMenu";
+
+// The block selector pulls in MapLibre — load it only when opened.
+const BlockSelectorModal = lazy(() =>
+  import("./BlockSelectorModal").then((m) => ({ default: m.BlockSelectorModal })),
+);
 
 type Mode = "farm" | "general";
 
@@ -54,6 +59,7 @@ export function CanaryPanel() {
   const [mode, setMode] = useState<Mode>("farm");
   const [blocks, setBlocks] = useState<CanaryBlock[]>([]);
   const [blockId, setBlockId] = useState<number | null>(null);
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -320,9 +326,8 @@ export function CanaryPanel() {
         orchards={orchards}
         orchard={orchard}
         onOrchard={chooseOrchard}
-        blocks={blocks}
-        blockId={blockId}
-        onBlock={setBlockId}
+        blockLabel={block?.blockName ?? "All blocks"}
+        onOpenBlocks={() => setBlockModalOpen(true)}
         onNewChat={newChat}
       />
 
@@ -342,6 +347,20 @@ export function CanaryPanel() {
           <Composer busy={busy} onSend={send} onStop={stop} hint={composerHint} />
         </>
       )}
+
+      {blockModalOpen && !general && (
+        <Suspense fallback={null}>
+          <BlockSelectorModal
+            blocks={blocks}
+            selectedBlockId={blockId}
+            onSelect={(id) => {
+              setBlockId(id);
+              setBlockModalOpen(false);
+            }}
+            onClose={() => setBlockModalOpen(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -358,9 +377,8 @@ function Header({
   orchards,
   orchard,
   onOrchard,
-  blocks,
-  blockId,
-  onBlock,
+  blockLabel,
+  onOpenBlocks,
   onNewChat,
 }: {
   mode: Mode;
@@ -370,9 +388,8 @@ function Header({
   orchards: { code: string; name: string }[];
   orchard: string;
   onOrchard: (code: string) => void;
-  blocks: CanaryBlock[];
-  blockId: number | null;
-  onBlock: (id: number | null) => void;
+  blockLabel: string;
+  onOpenBlocks: () => void;
   onNewChat: () => void;
 }) {
   return (
@@ -399,24 +416,18 @@ function Header({
           />
         )}
         {!general && (
-          <PickerMenu
-            icon={<MapPin className="size-4" />}
-            label="Block"
-            placeholder="All blocks"
-            value={blockId === null ? "all" : String(blockId)}
-            items={[
-              { value: "all", label: "All blocks", sublabel: "No specific block" },
-              ...[...blocks]
-                .sort((a, b) => a.blockName.localeCompare(b.blockName))
-                .map((b) => ({
-                  value: String(b.blockId),
-                  label: b.blockName,
-                  ...(b.ranchName ? { sublabel: b.ranchName } : {}),
-                })),
-            ]}
-            onSelect={(v) => onBlock(v === "all" ? null : Number(v))}
-            emptyText="No blocks in this orchard"
-          />
+          <button
+            onClick={onOpenBlocks}
+            className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink-dim transition hover:bg-surface-2 hover:text-ink"
+          >
+            <MapPin className="size-4 shrink-0 text-ink-faint" />
+            <span className="flex flex-col items-start leading-tight">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
+                Block
+              </span>
+              <span className="max-w-[11rem] truncate">{blockLabel}</span>
+            </span>
+          </button>
         )}
         {general && (
           <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-1.5 text-xs font-medium text-amber-700">
