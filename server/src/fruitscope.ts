@@ -204,6 +204,14 @@ export interface FsOrchard {
 export interface FsUserInfo {
   accessible_orchards?: FsOrchard[];
   is_admin?: boolean;
+  canary_mode?: number;
+  [k: string]: unknown;
+}
+
+/** Per-block grower context (season goals + management plan) for prepare-context. */
+export interface FsBlockInfo {
+  season_goals?: string | null;
+  management_plan?: string | null;
   [k: string]: unknown;
 }
 
@@ -278,6 +286,36 @@ export async function getBlocks(authJwt: string, orchardCode: string): Promise<F
   return blocks && typeof blocks === "object" ? Object.values(blocks) : [];
 }
 
+/** One scan from `/util/block_timeline` (newest-first). */
+export interface FsScan {
+  scan_id: number;
+  scan_name: string;
+  time: string;
+  entity_type?: string | null;
+  stage_type?: string | null;
+  variety_type?: string | null;
+  rows_scanned?: number | null;
+  total_trees?: number | null;
+}
+
+/**
+ * A block's scan timeline. NOTE the FruitScope quirk: `/util/block_timeline`'s
+ * `block_id` query param is actually matched against `Block.block_name`, so we
+ * pass the block NAME here, not the numeric id. Returns a plain array.
+ */
+export function getBlockTimeline(
+  authJwt: string,
+  orchardCode: string,
+  blockName: string,
+): Promise<FsScan[]> {
+  return orchardJson<FsScan[]>(
+    authJwt,
+    orchardCode,
+    "GET",
+    `/util/block_timeline?block_id=${encodeURIComponent(blockName)}`,
+  );
+}
+
 export function listConversations(
   authJwt: string,
   orchardCode: string,
@@ -341,32 +379,56 @@ export function deleteConversation(
   return orchardJson(authJwt, orchardCode, "DELETE", `/ai/conversations/${encodeURIComponent(id)}`);
 }
 
+/** A block's grower context (goals / management plan) — used to enrich turn 0. */
+export function getBlockInfo(
+  authJwt: string,
+  orchardCode: string,
+  blockName: string,
+): Promise<FsBlockInfo> {
+  return orchardJson<FsBlockInfo>(
+    authJwt,
+    orchardCode,
+    "GET",
+    `/util/get_block_info?block_name=${encodeURIComponent(blockName)}`,
+  );
+}
+
 /**
- * Build the turn-0 context (multipart) and return its `session_id`. We send only
- * the fields the messenger drives; everything else uses the backend defaults.
+ * Build the turn-0 context (multipart) and return its `session_id`. Mirrors the
+ * FruitScope web app's prepare-context payload so Canary gets the SAME grounding
+ * (rich block_info, goals/management plan, home_chat + canary_mode tooling).
  */
 export async function prepareContext(
   authJwt: string,
   orchardCode: string,
   fields: {
-    block_info?: { block_name: string; block_id?: number | undefined } | null | undefined;
+    block_info?: Record<string, unknown> | null | undefined;
     scan_ids?: number[] | null | undefined;
     conversation_id?: string | undefined;
-    agent_mode?: string | undefined;
-    fast_mode?: boolean | undefined;
     general_mode?: boolean | undefined;
+    fast_mode?: boolean | undefined;
     is_imperial?: boolean | undefined;
+    canary_mode?: number | undefined;
+    goals?: string | null | undefined;
+    management_plan?: string | null | undefined;
   },
 ): Promise<FsPrepareContextResult> {
   const jar = await switchOrchard(authJwt, orchardCode);
   const form = new FormData();
-  if (fields.block_info) form.set("block_info", JSON.stringify(fields.block_info));
-  if (fields.scan_ids && fields.scan_ids.length) form.set("scan_ids", JSON.stringify(fields.scan_ids));
-  if (fields.conversation_id) form.set("conversation_id", fields.conversation_id);
-  if (fields.agent_mode) form.set("agent_mode", fields.agent_mode);
+  form.set("block_info", JSON.stringify(fields.block_info ?? {}));
+  form.set("canary_mode", String(fields.canary_mode ?? 5));
+  form.set("clarifying_qa", "[]");
+  form.set("provider", "gemini");
+  // Mark as an AI-native homepage chat — the backend hands structured tasks
+  // (yield, charts, PDF) to the farm assistant when not in general mode.
+  form.set("home_chat", "true");
   form.set("fast_mode", String(fields.fast_mode ?? false));
   form.set("general_mode", String(fields.general_mode ?? false));
   form.set("is_imperial", String(fields.is_imperial ?? true));
+  if (fields.scan_ids && fields.scan_ids.length) form.set("scan_ids", JSON.stringify(fields.scan_ids));
+  if (fields.conversation_id) form.set("conversation_id", fields.conversation_id);
+  if (fields.goals) form.set("goals", fields.goals);
+  if (fields.management_plan) form.set("management_plan", fields.management_plan);
 
   const res = await fetch(url("/ai/prepare-context"), {
     method: "POST",

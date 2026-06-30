@@ -56,9 +56,15 @@ export function CanaryPanel() {
 
   const [orchards, setOrchards] = useState<{ code: string; name: string }[]>([]);
   const [orchard, setOrchard] = useState<string>("");
+  const [canaryMode, setCanaryMode] = useState(5);
   const [mode, setMode] = useState<Mode>("farm");
   const [blocks, setBlocks] = useState<CanaryBlock[]>([]);
   const [blockId, setBlockId] = useState<number | null>(null);
+  // The selected scan(s) for the chosen block (null = use the block's latest scan).
+  const [scanSel, setScanSel] = useState<{ ids: number[] | null; label: string | null }>({
+    ids: null,
+    label: null,
+  });
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -128,8 +134,9 @@ export function CanaryPanel() {
     setLoadState("loading");
     setLoadError(null);
     try {
-      const list = await canaryApi.orchards();
+      const { orchards: list, canaryMode: cm } = await canaryApi.orchards();
       setOrchards(list);
+      setCanaryMode(cm);
       setLoadState("ready");
       setOrchard((prev) => {
         if (prev) return prev;
@@ -191,9 +198,14 @@ export function CanaryPanel() {
     setError(null);
   };
 
+  const clearBlock = () => {
+    setBlockId(null);
+    setScanSel({ ids: null, label: null });
+  };
+
   const chooseOrchard = (code: string) => {
     if (code === orchard) return;
-    setBlockId(null);
+    clearBlock();
     setOrchard(code); // the effect resets the chat + loads the new orchard
   };
 
@@ -201,7 +213,7 @@ export function CanaryPanel() {
     if (m === mode) return;
     setMode(m);
     if (m === "general") {
-      setBlockId(null);
+      clearBlock();
       if (!orchard && orchards[0]) setOrchard(orchards[0].code); // general still needs a container
     }
     newChat();
@@ -213,7 +225,10 @@ export function CanaryPanel() {
     setError(null);
     try {
       const { conversation, messages: stored, sessionId } = await canaryApi.conversation(orchard, id);
-      if (!general) setBlockId(conversation.blockId);
+      if (!general) {
+        setBlockId(conversation.blockId);
+        setScanSel({ ids: null, label: null }); // restored block uses its latest scan
+      }
       setMessages(stored.map(toUiMessage) as never);
       sessionIdRef.current = sessionId;
     } catch (err) {
@@ -230,7 +245,9 @@ export function CanaryPanel() {
     }
     setError(null);
     const b = general ? null : block;
-    const scanIds = b?.lastScanId != null ? [b.lastScanId] : null;
+    // Use the explicitly-picked scan(s); otherwise default to the block's latest.
+    const scanIds = b ? (scanSel.ids ?? (b.lastScanId != null ? [b.lastScanId] : null)) : null;
+    const scanLbl = b ? (scanSel.label ?? b.lastScanStage) : null;
 
     try {
       let convId = activeIdRef.current;
@@ -249,10 +266,20 @@ export function CanaryPanel() {
       if (!sessionIdRef.current) {
         const ctx = await canaryApi.prepareContext(orchard, {
           conversation_id: convId,
-          block_info: b ? { block_name: b.blockName, block_id: b.blockId } : null,
+          block: b
+            ? {
+                name: b.blockName,
+                fruitType: b.fruitType,
+                variety: b.variety,
+                acreage: b.acreage,
+                lastScanStage: b.lastScanStage,
+                lat: b.lat,
+                lon: b.lon,
+              }
+            : null,
           scan_ids: scanIds,
-          agent_mode: "analytical",
           general_mode: general,
+          canary_mode: canaryMode,
         });
         sessionIdRef.current = ctx.session_id;
       }
@@ -260,7 +287,7 @@ export function CanaryPanel() {
         block_name: b?.blockName ?? null,
         scan_ids: scanIds,
         sub_block_id: null,
-        scan_label: b?.lastScanStage ?? null,
+        scan_label: scanLbl,
       };
       sendMessage(
         { text: trimmed },
@@ -326,7 +353,9 @@ export function CanaryPanel() {
         orchards={orchards}
         orchard={orchard}
         onOrchard={chooseOrchard}
-        blockLabel={block?.blockName ?? "All blocks"}
+        blockLabel={
+          block ? (scanSel.label ? `${block.blockName} · ${scanSel.label}` : block.blockName) : "All blocks"
+        }
         onOpenBlocks={() => setBlockModalOpen(true)}
         onNewChat={newChat}
       />
@@ -352,9 +381,11 @@ export function CanaryPanel() {
         <Suspense fallback={null}>
           <BlockSelectorModal
             blocks={blocks}
+            orchard={orchard}
             selectedBlockId={blockId}
-            onSelect={(id) => {
-              setBlockId(id);
+            onSelect={(sel) => {
+              setBlockId(sel.blockId);
+              setScanSel({ ids: sel.scanIds, label: sel.scanLabel });
               setBlockModalOpen(false);
             }}
             onClose={() => setBlockModalOpen(false)}
@@ -400,13 +431,13 @@ function Header({
         <p className="truncate text-[11px] text-ink-dim">FruitScope AI assistant</p>
       </div>
 
-      <div className="ml-auto flex flex-wrap items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center gap-1.5">
         {canGeneral && <ModeToggle mode={mode} onMode={onMode} />}
 
         {!general && (
           <PickerMenu
             primary
-            icon={<Trees className="size-4" />}
+            icon={<Trees className="size-3.5" />}
             label="Orchard"
             placeholder="Select orchard"
             value={orchard || null}
@@ -418,29 +449,25 @@ function Header({
         {!general && (
           <button
             onClick={onOpenBlocks}
-            className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink-dim transition hover:bg-surface-2 hover:text-ink"
+            title="Choose a block"
+            className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-xs font-medium text-ink-dim transition hover:bg-surface-2 hover:text-ink"
           >
-            <MapPin className="size-4 shrink-0 text-ink-faint" />
-            <span className="flex flex-col items-start leading-tight">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
-                Block
-              </span>
-              <span className="max-w-[11rem] truncate">{blockLabel}</span>
-            </span>
+            <MapPin className="size-3.5 shrink-0 text-ink-faint" />
+            <span className="max-w-[10rem] truncate">{blockLabel}</span>
           </button>
         )}
         {general && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-1.5 text-xs font-medium text-amber-700">
-            <Sparkles className="size-4" />
-            General chat — not tied to a block or orchard
+          <span className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300/60 bg-amber-50/60 px-2.5 text-xs font-medium text-amber-700">
+            <Sparkles className="size-3.5" />
+            General chat
           </span>
         )}
 
         <button
           onClick={onNewChat}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-600"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-500 px-2.5 text-xs font-semibold text-white transition hover:bg-brand-600"
         >
-          <MessageSquarePlus className="size-4" />
+          <MessageSquarePlus className="size-3.5" />
           New chat
         </button>
       </div>
@@ -454,13 +481,13 @@ function ModeToggle({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void })
     { key: "general", label: "General", icon: <Sparkles className="size-3.5" /> },
   ];
   return (
-    <div className="inline-flex rounded-lg border border-line bg-surface p-0.5">
+    <div className="inline-flex h-8 items-center rounded-lg border border-line bg-surface p-0.5">
       {opts.map((o) => (
         <button
           key={o.key}
           onClick={() => onMode(o.key)}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition",
+            "inline-flex h-full items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition",
             mode === o.key ? "bg-raised text-brand-700 shadow-sm" : "text-ink-dim hover:text-ink",
           )}
         >

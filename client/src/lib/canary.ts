@@ -64,6 +64,17 @@ export interface CanaryBlock {
   lastScanId: number | null;
 }
 
+export interface CanaryScan {
+  scanId: number;
+  scanName: string;
+  time: string;
+  entityType: string | null;
+  stage: string | null;
+  variety: string | null;
+  rows: number | null;
+  trees: number | null;
+}
+
 export interface CanaryConversation {
   id: string;
   title: string | null;
@@ -114,13 +125,20 @@ function mapConversation(c: RawConversation): CanaryConversation {
 /* ------------------------------------------------------------------ */
 
 export const canaryApi = {
-  /** Orchards the user can use Canary in. */
-  orchards: async (): Promise<CanaryOrchard[]> =>
-    (await req<{ orchards: CanaryOrchard[] }>("/orchards")).orchards,
+  /** Orchards the user can use Canary in, plus the user's Canary tool mode. */
+  orchards: async (): Promise<{ orchards: CanaryOrchard[]; canaryMode: number }> => {
+    const r = await req<{ orchards: CanaryOrchard[]; canaryMode?: number }>("/orchards");
+    return { orchards: r.orchards, canaryMode: r.canaryMode ?? 5 };
+  },
 
   /** Blocks (+ recent scans) in an orchard. */
   blocks: async (orchard: string): Promise<CanaryBlock[]> =>
     (await req<{ blocks: CanaryBlock[] }>(`${o(orchard)}/blocks`)).blocks,
+
+  /** A block's scan timeline (newest first). `blockName`, per FruitScope's quirk. */
+  scans: async (orchard: string, blockName: string): Promise<CanaryScan[]> =>
+    (await req<{ scans: CanaryScan[] }>(`${o(orchard)}/scans?block=${encodeURIComponent(blockName)}`))
+      .scans,
 
   /** Past conversations in an orchard, newest first. */
   conversations: async (orchard: string): Promise<CanaryConversation[]> => {
@@ -172,13 +190,21 @@ export const canaryApi = {
   prepareContext: (
     orchard: string,
     body: {
-      block_info?: { block_name: string; block_id?: number } | null;
+      block?: {
+        name: string;
+        fruitType?: string | null;
+        variety?: string | null;
+        acreage?: number | null;
+        lastScanStage?: string | null;
+        lat?: number | null;
+        lon?: number | null;
+      } | null;
       scan_ids?: number[] | null;
       conversation_id?: string;
-      agent_mode?: string;
       general_mode?: boolean;
       fast_mode?: boolean;
       is_imperial?: boolean;
+      canary_mode?: number;
     },
   ): Promise<{ session_id: string; scan_report_pending?: boolean }> =>
     req(`${o(orchard)}/prepare-context`, { method: "POST", body: JSON.stringify(body) }),

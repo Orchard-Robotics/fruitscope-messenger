@@ -87,14 +87,14 @@ canary.get("/orchards", async (req, res) => {
     // Refresh the fallback cache (best-effort) for the next time FruitScope is down.
     await users.setFruitscopeOrchards(userId, orchards).catch(() => {});
     console.log(`[canary] user=${userId} orchards=${orchards.length}${info.is_admin ? " (admin: all)" : ""}`);
-    res.json({ orchards });
+    res.json({ orchards, canaryMode: info.canary_mode ?? 5 });
   } catch (err) {
     // FruitScope unreachable (network / 5xx) → serve the cached list so the
     // picker still works. Auth failures (401/403) are NOT papered over with a
     // stale cache — those need a real reconnect, surfaced as-is.
     if (err instanceof fs.FruitscopeApiError && err.status >= 500 && cached && cached.length) {
       console.warn(`[canary] user=${userId} /user-info down (${err.status}); serving ${cached.length} cached orchards`);
-      res.json({ orchards: cached });
+      res.json({ orchards: cached, canaryMode: 5 });
       return;
     }
     sendUpstreamError(res, err);
@@ -125,6 +125,35 @@ canary.get("/o/:orchard/blocks", async (req, res) => {
         lastScanDate: b.last_scan_timestamp ?? null,
         lastScanStage: b.last_scan_type ?? null,
         lastScanId: b.last_scan_id ?? null,
+      })),
+    });
+  } catch (err) {
+    sendUpstreamError(res, err);
+  }
+});
+
+/** A block's scan timeline (newest first) — for the scan picker / combine view. */
+canary.get("/o/:orchard/scans", async (req, res) => {
+  const orchard = orchardParam.safeParse(req.params.orchard);
+  const block = typeof req.query.block === "string" ? req.query.block.trim() : "";
+  if (!orchard.success || !block) {
+    res.status(400).json({ error: "Invalid request" });
+    return;
+  }
+  const jwt = await tokenOr409(req, res);
+  if (!jwt) return;
+  try {
+    const scans = await fs.getBlockTimeline(jwt, orchard.data, block);
+    res.json({
+      scans: scans.map((s) => ({
+        scanId: s.scan_id,
+        scanName: s.scan_name,
+        time: s.time,
+        entityType: s.entity_type ?? null,
+        stage: s.stage_type ?? null,
+        variety: s.variety_type ?? null,
+        rows: s.rows_scanned ?? null,
+        trees: s.total_trees ?? null,
       })),
     });
   } catch (err) {
@@ -250,13 +279,23 @@ canary.delete("/o/:orchard/conversations/:id", async (req, res) => {
 /* ------------------------------------------------------------------ */
 
 const prepareSchema = z.object({
-  block_info: z.object({ block_name: z.string(), block_id: z.number().int().optional() }).nullish(),
+  block: z
+    .object({
+      name: z.string(),
+      fruitType: z.string().nullish(),
+      variety: z.string().nullish(),
+      acreage: z.number().nullish(),
+      lastScanStage: z.string().nullish(),
+      lat: z.number().nullish(),
+      lon: z.number().nullish(),
+    })
+    .nullish(),
   scan_ids: z.array(z.number().int()).nullish(),
   conversation_id: z.string().optional(),
-  agent_mode: z.string().optional(),
-  fast_mode: z.boolean().optional(),
   general_mode: z.boolean().optional(),
+  fast_mode: z.boolean().optional(),
   is_imperial: z.boolean().optional(),
+  canary_mode: z.number().int().optional(),
 });
 
 canary.post("/o/:orchard/prepare-context", async (req, res) => {
@@ -268,8 +307,46 @@ canary.post("/o/:orchard/prepare-context", async (req, res) => {
   }
   const jwt = await tokenOr409(req, res);
   if (!jwt) return;
+  const b = body.data.block;
+
+  // Build the rich block_info the FruitScope web app sends, and fetch the
+  // block's grower context (goals / management plan) so Canary is grounded the
+  // same way. Both are best-effort — a missing block just means a general chat.
+  let blockInfo: Record<string, unknown> | undefined;
+  let goals: string | undefined;
+  let managementPlan: string | undefined;
+  if (b) {
+    blockInfo = {
+      block_name: b.name,
+      fruit_type: b.fruitType ?? null,
+      variety_name: b.variety ?? null,
+      acreage: b.acreage ?? null,
+      last_scan_type: b.lastScanStage ?? null,
+      ...(b.lat != null && b.lon != null ? { location: { lat: b.lat, long: b.lon } } : {}),
+    };
+    try {
+      const info = await fs.getBlockInfo(jwt, orchard.data, b.name);
+      if (info.season_goals) goals = info.season_goals;
+      if (info.management_plan) managementPlan = info.management_plan;
+    } catch {
+      /* grower context is optional — proceed without it */
+    }
+  }
+
   try {
-    res.json(await fs.prepareContext(jwt, orchard.data, body.data));
+    res.json(
+      await fs.prepareContext(jwt, orchard.data, {
+        block_info: blockInfo,
+        scan_ids: body.data.scan_ids,
+        conversation_id: body.data.conversation_id,
+        general_mode: body.data.general_mode,
+        fast_mode: body.data.fast_mode,
+        is_imperial: body.data.is_imperial,
+        canary_mode: body.data.canary_mode,
+        goals,
+        management_plan: managementPlan,
+      }),
+    );
   } catch (err) {
     sendUpstreamError(res, err);
   }

@@ -70,23 +70,19 @@ export function PickerMenu({
           setOpen((v) => !v);
           setQuery("");
         }}
+        title={label}
         className={cn(
-          "flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition",
+          "flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition",
           primary
             ? "border-brand-300 bg-brand-500/10 text-brand-700 hover:bg-brand-500/15"
             : "border-line bg-surface text-ink-dim hover:bg-surface-2 hover:text-ink",
         )}
       >
         <span className={cn("shrink-0", primary ? "text-brand-600" : "text-ink-faint")}>{icon}</span>
-        <span className="flex flex-col items-start leading-tight">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
-            {label}
-          </span>
-          <span className={cn("max-w-[11rem] truncate", !current && "text-ink-faint")}>
-            {current ? current.label : placeholder}
-          </span>
+        <span className={cn("max-w-[8.5rem] truncate", !current && "text-ink-faint")}>
+          {current ? current.label : placeholder}
         </span>
-        <ChevronDown className={cn("size-4 shrink-0 transition", open && "rotate-180")} />
+        <ChevronDown className={cn("size-3.5 shrink-0 transition", open && "rotate-180")} />
       </button>
 
       {open && (

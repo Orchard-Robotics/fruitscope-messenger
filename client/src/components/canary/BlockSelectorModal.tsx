@@ -1,51 +1,72 @@
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Check, Layers, MapPin, Search, X } from "lucide-react";
+import { ArrowLeft, Check, Layers, Loader2, MapPin, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import type { CanaryBlock } from "@/lib/canary";
+import { type CanaryBlock, type CanaryScan, canaryApi } from "@/lib/canary";
+import { type ScanGroup, groupScans, scanLabel } from "@/lib/canaryScans";
 import { cn } from "@/lib/cn";
 import { mapboxSatelliteStyle } from "@/lib/mapbox";
 
 const CIRCLES = "blocks-circles";
 
-/** ms timestamp of a block's latest scan (0 if it has never been scanned). */
+/** The result of the picker: a block (+ optional scan group), or "all blocks". */
+export interface BlockSelection {
+  blockId: number | null;
+  blockName: string | null;
+  scanIds: number[] | null;
+  scanLabel: string | null;
+}
+
 const scanTime = (b: CanaryBlock): number => (b.lastScanDate ? Date.parse(b.lastScanDate) || 0 : 0);
 
-function fmtDate(iso: string | null): string {
+function fmtAgo(iso: string | null): string {
   if (!iso) return "No scans yet";
   const t = Date.parse(iso);
   if (!t) return "No scans yet";
   const days = Math.floor((Date.now() - t) / 86_400_000);
-  if (days <= 0) return "Scanned today";
-  if (days === 1) return "Scanned yesterday";
-  if (days < 30) return `Scanned ${days}d ago`;
-  return `Scanned ${new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days}d ago`;
+  return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function fmtScanWhen(iso: string): string {
+  const t = Date.parse(iso);
+  if (!t) return iso;
+  return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 /**
- * The FruitScope-style block picker: a recency-ordered, searchable list paired
- * with a MapLibre satellite map (Mapbox imagery) whose markers are coloured by
- * scan recency and selectable. Picking from either side chooses the block.
+ * FruitScope-style block + scan picker: a recency-ordered list paired with a
+ * MapLibre satellite map, then a per-block scan timeline (with a "combine scans"
+ * toggle that merges same-day scans).
  */
 export function BlockSelectorModal({
   blocks,
+  orchard,
   selectedBlockId,
   onSelect,
   onClose,
 }: {
   blocks: CanaryBlock[];
+  orchard: string;
   selectedBlockId: number | null;
-  onSelect: (blockId: number | null) => void;
+  onSelect: (sel: BlockSelection) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const onSelectRef = useRef(onSelect);
-  onSelectRef.current = onSelect;
+  const [drill, setDrill] = useState<CanaryBlock | null>(null);
+  const [scans, setScans] = useState<CanaryScan[]>([]);
+  const [scansLoading, setScansLoading] = useState(false);
+  const [scansError, setScansError] = useState<string | null>(null);
+  const [combine, setCombine] = useState(false);
 
-  // Newest scan first; un-scanned blocks sink to the bottom.
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const drillRef = useRef<(b: CanaryBlock) => void>(() => {});
+
+  const blockById = useMemo(() => new Map(blocks.map((b) => [b.blockId, b])), [blocks]);
   const ordered = useMemo(() => [...blocks].sort((a, b) => scanTime(b) - scanTime(a)), [blocks]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -54,20 +75,31 @@ export function BlockSelectorModal({
       (b) => b.blockName.toLowerCase().includes(q) || b.ranchName?.toLowerCase().includes(q),
     );
   }, [ordered, query]);
-
   const located = useMemo(() => blocks.filter((b) => b.lat != null && b.lon != null), [blocks]);
 
+  const drillInto = (block: CanaryBlock) => {
+    setDrill(block);
+    setScans([]);
+    setScansError(null);
+    setScansLoading(true);
+    setCombine(false);
+    canaryApi
+      .scans(orchard, block.blockName)
+      .then(setScans)
+      .catch((e) => setScansError(e instanceof Error ? e.message : "Couldn't load scans."))
+      .finally(() => setScansLoading(false));
+  };
+  drillRef.current = drillInto;
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (drill ? setDrill(null) : onClose());
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, drill]);
 
-  /* ----- the map (created once when the modal opens) ----- */
+  /* ----- the map (created once) ----- */
   useEffect(() => {
     if (!mapContainer.current) return;
-
-    // Recency 0..1 (1 = most recent) for the colour ramp.
     const times = located.map(scanTime).filter((t) => t > 0);
     const min = times.length ? Math.min(...times) : 0;
     const max = times.length ? Math.max(...times) : 1;
@@ -76,7 +108,6 @@ export function BlockSelectorModal({
       if (!t || max === min) return t ? 1 : 0;
       return (t - min) / (max - min);
     };
-
     const features = located.map((b) => ({
       type: "Feature" as const,
       geometry: { type: "Point" as const, coordinates: [b.lon as number, b.lat as number] },
@@ -91,17 +122,15 @@ export function BlockSelectorModal({
       attributionControl: false,
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
 
     map.on("load", () => {
       map.resize();
       if (features.length) {
-        const b = new maplibregl.LngLatBounds();
-        for (const f of features) b.extend(f.geometry.coordinates as [number, number]);
-        map.fitBounds(b, { padding: 60, maxZoom: 15, duration: 0 });
+        const bnds = new maplibregl.LngLatBounds();
+        for (const f of features) bnds.extend(f.geometry.coordinates as [number, number]);
+        map.fitBounds(bnds, { padding: 60, maxZoom: 15, duration: 0 });
       }
-
       map.addSource("blocks", { type: "geojson", data: { type: "FeatureCollection", features } });
       map.addLayer({
         id: CIRCLES,
@@ -111,18 +140,7 @@ export function BlockSelectorModal({
           "circle-radius": 7,
           "circle-stroke-width": 2,
           "circle-stroke-color": "#ffffff",
-          // gray (old) → amber → green (recent)
-          "circle-color": [
-            "interpolate",
-            ["linear"],
-            ["get", "recency"],
-            0,
-            "#9ca3af",
-            0.5,
-            "#eab308",
-            1,
-            "#22c55e",
-          ],
+          "circle-color": ["interpolate", ["linear"], ["get", "recency"], 0, "#9ca3af", 0.5, "#eab308", 1, "#22c55e"],
         },
       });
       map.addLayer({
@@ -130,12 +148,7 @@ export function BlockSelectorModal({
         type: "circle",
         source: "blocks",
         filter: ["==", ["get", "blockId"], selectedBlockId ?? -1],
-        paint: {
-          "circle-radius": 11,
-          "circle-color": "rgba(0,0,0,0)",
-          "circle-stroke-color": "#3f8a66",
-          "circle-stroke-width": 3,
-        },
+        paint: { "circle-radius": 11, "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": "#3f8a66", "circle-stroke-width": 3 },
       });
       map.addLayer({
         id: "blocks-labels",
@@ -147,7 +160,6 @@ export function BlockSelectorModal({
           "text-size": 12,
           "text-offset": [0, 1.2],
           "text-anchor": "top",
-          // The user wants every block named — show all labels, even if they overlap.
           "text-allow-overlap": true,
           "text-ignore-placement": true,
         },
@@ -157,7 +169,8 @@ export function BlockSelectorModal({
 
     map.on("click", CIRCLES, (e) => {
       const id = e.features?.[0]?.properties?.blockId;
-      if (typeof id === "number") onSelectRef.current(id);
+      const block = typeof id === "number" ? blockById.get(id) : undefined;
+      if (block) drillRef.current(block);
     });
     map.on("mouseenter", CIRCLES, (e) => {
       map.getCanvas().style.cursor = "pointer";
@@ -173,7 +186,6 @@ export function BlockSelectorModal({
     });
 
     return () => map.remove();
-    // Created once per open; selection closes the modal so live updates aren't needed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -181,76 +193,41 @@ export function BlockSelectorModal({
     <div className="anim-fade-in fixed inset-0 z-50 grid place-items-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="anim-card-in relative z-10 flex h-[36rem] max-h-[88vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-line bg-raised shadow-2xl shadow-ink/10">
-        {/* List pane */}
-        <div className="flex w-72 shrink-0 flex-col border-r border-line bg-surface/60">
-          <div className="border-b border-line p-3">
-            <p className="mb-2 flex items-center gap-1.5 font-display text-sm font-bold text-ink">
-              <MapPin className="size-4 text-brand-600" />
-              Select a block
-            </p>
-            <div className="flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5">
-              <Search className="size-4 shrink-0 text-ink-faint" />
-              <input
-                autoFocus
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search blocks…"
-                className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
-              />
-            </div>
-          </div>
-          <ul className="min-h-0 flex-1 overflow-y-auto p-2">
-            <li>
-              <button
-                onClick={() => onSelect(null)}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition",
-                  selectedBlockId === null ? "bg-brand-500/12 text-brand-700" : "text-ink hover:bg-surface-2",
-                )}
-              >
-                <Layers className="size-4 shrink-0 text-ink-faint" />
-                <span className="flex-1 font-medium">All blocks</span>
-                {selectedBlockId === null && <Check className="size-4 text-brand-600" />}
-              </button>
-            </li>
-            {filtered.map((b) => {
-              const selected = b.blockId === selectedBlockId;
-              return (
-                <li key={b.blockId}>
-                  <button
-                    onClick={() => onSelect(b.blockId)}
-                    className={cn(
-                      "w-full rounded-lg px-2.5 py-2 text-left transition",
-                      selected ? "bg-brand-500/12" : "hover:bg-surface-2",
-                    )}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span
-                        className={cn(
-                          "block truncate text-sm font-medium",
-                          selected ? "text-brand-700" : "text-ink",
-                        )}
-                      >
-                        {b.blockName}
-                      </span>
-                      {selected && <Check className="size-3.5 shrink-0 text-brand-600" />}
-                    </span>
-                    <span className="mt-0.5 block truncate text-[11px] text-ink-faint">
-                      {[b.ranchName, fmtDate(b.lastScanDate)].filter(Boolean).join(" · ")}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-            {filtered.length === 0 && (
-              <li className="px-2.5 py-2 text-sm text-ink-faint">No blocks match “{query}”.</li>
-            )}
-          </ul>
+        {/* Left pane: blocks list, or a block's scan timeline */}
+        <div className="flex w-80 shrink-0 flex-col border-r border-line bg-surface/60">
+          {drill ? (
+            <ScanPane
+              block={drill}
+              scans={scans}
+              loading={scansLoading}
+              error={scansError}
+              combine={combine}
+              onCombine={setCombine}
+              onBack={() => setDrill(null)}
+              onPick={(group) =>
+                onSelect({
+                  blockId: drill.blockId,
+                  blockName: drill.blockName,
+                  scanIds: group ? group.scanIds : null,
+                  scanLabel: group ? scanLabel(group) : null,
+                })
+              }
+            />
+          ) : (
+            <BlocksPane
+              blocks={filtered}
+              selectedBlockId={selectedBlockId}
+              query={query}
+              onQuery={setQuery}
+              onPick={drillInto}
+              onAll={() => onSelect({ blockId: null, blockName: null, scanIds: null, scanLabel: null })}
+            />
+          )}
         </div>
 
-        {/* Map pane */}
+        {/* Map pane (always mounted) */}
         <div className="relative min-w-0 flex-1">
-          <div ref={mapContainer} className="absolute inset-0" />
+          <div ref={mapContainer} className="h-full w-full" />
           {located.length === 0 && (
             <div className="absolute inset-0 grid place-items-center bg-surface/80 text-sm text-ink-dim">
               These blocks don’t have map locations yet.
@@ -267,5 +244,205 @@ export function BlockSelectorModal({
       </div>
     </div>,
     document.body,
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Blocks list pane                                                    */
+/* ------------------------------------------------------------------ */
+
+function BlocksPane({
+  blocks,
+  selectedBlockId,
+  query,
+  onQuery,
+  onPick,
+  onAll,
+}: {
+  blocks: CanaryBlock[];
+  selectedBlockId: number | null;
+  query: string;
+  onQuery: (q: string) => void;
+  onPick: (b: CanaryBlock) => void;
+  onAll: () => void;
+}) {
+  return (
+    <>
+      <div className="border-b border-line p-3">
+        <p className="mb-2 flex items-center gap-1.5 font-display text-sm font-bold text-ink">
+          <MapPin className="size-4 text-brand-600" />
+          Select a block
+        </p>
+        <div className="flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5">
+          <Search className="size-4 shrink-0 text-ink-faint" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => onQuery(e.target.value)}
+            placeholder="Search blocks…"
+            className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
+          />
+        </div>
+      </div>
+      <ul className="min-h-0 flex-1 overflow-y-auto p-2">
+        <li>
+          <button
+            onClick={onAll}
+            className={cn(
+              "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition",
+              selectedBlockId === null ? "bg-brand-500/12 text-brand-700" : "text-ink hover:bg-surface-2",
+            )}
+          >
+            <Layers className="size-4 shrink-0 text-ink-faint" />
+            <span className="flex-1 font-medium">All blocks</span>
+            {selectedBlockId === null && <Check className="size-4 text-brand-600" />}
+          </button>
+        </li>
+        {blocks.map((b) => (
+          <li key={b.blockId}>
+            <button
+              onClick={() => onPick(b)}
+              className={cn(
+                "w-full rounded-lg px-2.5 py-2 text-left transition",
+                b.blockId === selectedBlockId ? "bg-brand-500/12" : "hover:bg-surface-2",
+              )}
+            >
+              <span
+                className={cn(
+                  "block truncate text-sm font-medium",
+                  b.blockId === selectedBlockId ? "text-brand-700" : "text-ink",
+                )}
+              >
+                {b.blockName}
+              </span>
+              <span className="mt-0.5 block truncate text-[11px] text-ink-faint">
+                {[b.ranchName, b.lastScanDate ? `scanned ${fmtAgo(b.lastScanDate)}` : "no scans"]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </button>
+          </li>
+        ))}
+        {blocks.length === 0 && (
+          <li className="px-2.5 py-2 text-sm text-ink-faint">No blocks match “{query}”.</li>
+        )}
+      </ul>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Scan timeline pane                                                  */
+/* ------------------------------------------------------------------ */
+
+function ScanPane({
+  block,
+  scans,
+  loading,
+  error,
+  combine,
+  onCombine,
+  onBack,
+  onPick,
+}: {
+  block: CanaryBlock;
+  scans: CanaryScan[];
+  loading: boolean;
+  error: string | null;
+  combine: boolean;
+  onCombine: (v: boolean) => void;
+  onBack: () => void;
+  onPick: (group: ScanGroup | null) => void;
+}) {
+  const groups = useMemo(() => groupScans(scans, combine), [scans, combine]);
+
+  return (
+    <>
+      <div className="border-b border-line p-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onBack}
+            className="grid size-7 shrink-0 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2 hover:text-ink"
+            aria-label="Back to blocks"
+          >
+            <ArrowLeft className="size-4" />
+          </button>
+          <div className="min-w-0">
+            <p className="truncate font-display text-sm font-bold text-ink">{block.blockName}</p>
+            <p className="truncate text-[11px] text-ink-faint">Pick a scan to analyze</p>
+          </div>
+          <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-ink-dim">
+            Combine
+            <button
+              onClick={() => onCombine(!combine)}
+              className={cn(
+                "relative h-4 w-7 shrink-0 rounded-full transition-colors",
+                combine ? "bg-brand-500" : "bg-surface-2",
+              )}
+              role="switch"
+              aria-checked={combine}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 size-3 rounded-full bg-white shadow-sm transition-all",
+                  combine ? "left-[0.875rem]" : "left-0.5",
+                )}
+              />
+            </button>
+          </label>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        <button
+          onClick={() => onPick(null)}
+          className="mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-ink transition hover:bg-surface-2"
+        >
+          <Layers className="size-4 shrink-0 text-ink-faint" />
+          <span className="flex-1 font-medium">Whole block</span>
+          <span className="text-[11px] text-ink-faint">no specific scan</span>
+        </button>
+
+        {loading && (
+          <p className="flex items-center gap-1.5 px-2.5 py-2 text-sm text-ink-faint">
+            <Loader2 className="size-4 animate-spin" /> Loading scans…
+          </p>
+        )}
+        {error && <p className="px-2.5 py-2 text-sm text-danger">{error}</p>}
+        {!loading && !error && groups.length === 0 && (
+          <p className="px-2.5 py-2 text-sm text-ink-faint">No scans for this block yet.</p>
+        )}
+
+        <ol className="space-y-1">
+          {groups.map((g) => (
+            <li key={g.scanIds.join("-")}>
+              <button
+                onClick={() => onPick(g)}
+                className="w-full rounded-lg border border-line bg-surface px-2.5 py-2 text-left transition hover:border-brand-300 hover:bg-brand-500/5"
+              >
+                <span className="flex items-center gap-1.5">
+                  <span className="block truncate text-sm font-medium text-ink">
+                    {g.scanNames.join(" / ")}
+                  </span>
+                  {g.scanIds.length > 1 && (
+                    <span className="shrink-0 rounded-full bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-bold text-brand-700">
+                      {g.scanIds.length} scans
+                    </span>
+                  )}
+                </span>
+                <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-ink-faint">
+                  <span>{fmtScanWhen(g.time)}</span>
+                  {g.stage && (
+                    <span className="rounded bg-surface-2 px-1.5 py-0.5 font-medium text-ink-dim">{g.stage}</span>
+                  )}
+                  {g.trees != null && g.trees > 0 && <span>{g.trees.toLocaleString()} trees</span>}
+                  {g.rows != null && g.rows > 0 && <span>{g.rows} rows</span>}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </>
   );
 }
