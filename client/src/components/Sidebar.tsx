@@ -1,7 +1,8 @@
-import { ChevronRight, Hash, Lock, MessageSquare, Plus, Users } from "lucide-react";
+import { ChevronRight, Hash, Lock, MessageSquare, Plus, Trash2, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { Channel, ID, User } from "@shared/index";
+import { canaryApi } from "@/lib/canary";
 import { cn } from "@/lib/cn";
 import { channelTitle, isGroupDm, isSelfDm } from "@/lib/channel";
 import { chat } from "@/lib/socket";
@@ -309,9 +310,31 @@ function CanaryTree({
   const setExpanded = useCanaryUi((s) => s.setExpanded);
   const conversations = useCanaryUi((s) => s.conversations);
   const activeConversationId = useCanaryUi((s) => s.activeConversationId);
+  const orchard = useCanaryUi((s) => s.orchard);
+  const setConversations = useCanaryUi((s) => s.setConversations);
+  const setActiveConversationId = useCanaryUi((s) => s.setActiveConversationId);
+  const requestNewChat = useCanaryUi((s) => s.requestNewChat);
   // The panel publishes the (valid) orchard + its conversations; the tree just
   // mirrors them. `loaded` distinguishes "panel hasn't run yet" from "no chats".
-  const loaded = useCanaryUi((s) => s.orchard !== "");
+  const loaded = orchard !== "";
+
+  const startNewChat = () => {
+    onOpenDm(); // surface the panel…
+    requestNewChat(); // …and reset it to a fresh chat
+  };
+
+  const deleteChat = async (id: string) => {
+    try {
+      await canaryApi.deleteConversation(orchard, id);
+      setConversations(conversations.filter((c) => c.id !== id));
+      if (activeConversationId === id) {
+        setActiveConversationId(null);
+        requestNewChat();
+      }
+    } catch {
+      /* best-effort; the list will reconcile on the next refresh */
+    }
+  };
 
   return (
     <li>
@@ -341,6 +364,13 @@ function CanaryTree({
             AI
           </span>
         </button>
+        <button
+          onClick={startNewChat}
+          title="New chat"
+          className="hidden size-6 shrink-0 place-items-center rounded text-ink-faint transition hover:bg-surface-2 hover:text-brand-600 group-hover:grid"
+        >
+          <Plus className="size-3.5" />
+        </button>
       </div>
 
       {expanded && (
@@ -353,16 +383,23 @@ function CanaryTree({
           {conversations.map((c) => {
             const active = dmActive && c.id === activeConversationId;
             return (
-              <li key={c.id}>
+              <li key={c.id} className="group/chat relative">
                 <button
                   onClick={() => onOpenConversation(c.id)}
                   className={cn(
-                    "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs transition",
+                    "flex w-full items-center gap-1.5 rounded-md px-2 py-1 pr-7 text-left text-xs transition",
                     active ? "bg-brand-500/12 text-brand-700" : "text-ink-dim hover:bg-surface-2 hover:text-ink",
                   )}
                 >
                   <MessageSquare className="size-3 shrink-0 text-ink-faint" />
                   <span className="truncate">{c.title || c.blockName || "Untitled chat"}</span>
+                </button>
+                <button
+                  onClick={() => void deleteChat(c.id)}
+                  title="Delete chat"
+                  className="absolute right-1 top-1 hidden size-5 place-items-center rounded text-ink-faint transition hover:bg-surface-2 hover:text-danger group-hover/chat:grid"
+                >
+                  <Trash2 className="size-3" />
                 </button>
               </li>
             );

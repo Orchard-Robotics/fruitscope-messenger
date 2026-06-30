@@ -6,19 +6,16 @@ import {
   Loader2,
   MapPin,
   MessageSquarePlus,
-  PanelLeftClose,
-  PanelLeftOpen,
   RotateCw,
   Search,
   Sparkles,
   Square,
-  Trash2,
   Trees,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
-import { type CanaryBlock, type CanaryConversation, CanaryError, canaryApi, chatApiPath } from "@/lib/canary";
+import { type CanaryBlock, CanaryError, canaryApi, chatApiPath } from "@/lib/canary";
 import { useCanaryUi } from "@/store/canary";
 import { useChatStore } from "@/store/store";
 import { CanaryAvatar } from "./CanaryAvatar";
@@ -62,16 +59,18 @@ export function CanaryPanel() {
   const [mode, setMode] = useState<Mode>("farm");
   const [blocks, setBlocks] = useState<CanaryBlock[]>([]);
   const [blockId, setBlockId] = useState<number | null>(null);
-  const [conversations, setConversations] = useState<CanaryConversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [railOpen, setRailOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Shared with the sidebar's conversation tree.
+  // The conversation list lives in the shared store (the sidebar renders it; the
+  // panel owns fetching it and the active thread).
   const publishCanary = useCanaryUi((s) => s.publish);
+  const setCanaryConversations = useCanaryUi((s) => s.setConversations);
   const setCanaryActive = useCanaryUi((s) => s.setActiveConversationId);
   const openRequest = useCanaryUi((s) => s.openRequest);
   const consumeOpenRequest = useCanaryUi((s) => s.consumeOpenRequest);
+  const newChatRequest = useCanaryUi((s) => s.newChatRequest);
+  const consumeNewChatRequest = useCanaryUi((s) => s.consumeNewChatRequest);
 
   // Mutable per-conversation context the send path reads without re-rendering.
   const sessionIdRef = useRef<string | null>(null);
@@ -81,25 +80,38 @@ export function CanaryPanel() {
   const general = mode === "general";
   const block = useMemo(() => blocks.find((b) => b.blockId === blockId) ?? null, [blocks, blockId]);
 
+  // Read the active orchard at send time (not when the transport was built) — the
+  // orchard is chosen after mount, so a transport with the URL baked in would post
+  // to a stale (empty) orchard. A stable transport + ref avoids that.
+  const orchardRef = useRef(orchard);
+  orchardRef.current = orchard;
   const transport = useMemo(
-    () => new DefaultChatTransport({ api: chatApiPath(orchard), credentials: "same-origin" }),
-    [orchard],
+    () =>
+      new DefaultChatTransport({
+        credentials: "same-origin",
+        prepareSendMessagesRequest: ({ messages, id, trigger, messageId, body }) => ({
+          api: chatApiPath(orchardRef.current),
+          body: { id, messages, trigger, messageId, ...body },
+        }),
+      }),
+    [],
   );
 
-  const refreshConversations = useCallback(async (code: string) => {
-    if (!code) return;
-    try {
-      setConversations(await canaryApi.conversations(code));
-    } catch {
-      /* non-fatal — the rail just stays as-is */
-    }
-  }, []);
+  const refreshConversations = useCallback(
+    async (code: string) => {
+      if (!code) return;
+      try {
+        setCanaryConversations(await canaryApi.conversations(code));
+      } catch {
+        /* non-fatal — the tree just stays as-is */
+      }
+    },
+    [setCanaryConversations],
+  );
 
   // Stable callbacks so `useChat`'s returned helpers don't change identity each
   // render (which would re-fire effects that depend on them).
   const onChatError = useCallback((err: unknown) => setError(extractError(err)), []);
-  const orchardRef = useRef(orchard);
-  orchardRef.current = orchard;
   const onChatFinish = useCallback(() => void refreshConversations(orchardRef.current), [refreshConversations]);
 
   const { messages, sendMessage, setMessages, status, stop } = useChat({
@@ -141,6 +153,7 @@ export function CanaryPanel() {
     setActiveId(null);
     sessionIdRef.current = null;
     setError(null);
+    publishCanary(orchard, []); // tell the sidebar the active orchard; list loads next
     void (async () => {
       try {
         const [bl, convos] = await Promise.all([
@@ -149,7 +162,7 @@ export function CanaryPanel() {
         ]);
         if (!alive) return;
         setBlocks(bl);
-        setConversations(convos);
+        setCanaryConversations(convos);
       } catch (err) {
         if (!alive) return;
         if (err instanceof CanaryError && err.code === "reconnect") {
@@ -207,16 +220,6 @@ export function CanaryPanel() {
     }
   };
 
-  const removeConversation = async (id: string) => {
-    try {
-      await canaryApi.deleteConversation(orchard, id);
-      setConversations((prev) => prev.filter((c) => c.id !== id));
-      if (activeIdRef.current === id) newChat();
-    } catch (err) {
-      setError(extractError(err));
-    }
-  };
-
   const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || status === "submitted" || status === "streaming") return;
@@ -267,11 +270,7 @@ export function CanaryPanel() {
     }
   };
 
-  /* ----- keep the sidebar conversation tree in sync ----- */
-
-  useEffect(() => {
-    publishCanary(orchard, conversations);
-  }, [orchard, conversations, publishCanary]);
+  /* ----- coordinate with the sidebar conversation tree ----- */
 
   useEffect(() => {
     setCanaryActive(activeId);
@@ -286,6 +285,14 @@ export function CanaryPanel() {
     // we intentionally key only on the request/readiness.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openRequest, loadState, orchard]);
+
+  // Start a fresh chat when the sidebar asks (e.g. its "+" or deleting the open one).
+  useEffect(() => {
+    if (!newChatRequest) return;
+    newChat();
+    consumeNewChatRequest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newChatRequest]);
 
   /* ----- render ----- */
 
@@ -321,35 +328,25 @@ export function CanaryPanel() {
         blocks={blocks}
         blockId={blockId}
         onBlock={setBlockId}
-        railOpen={railOpen}
-        onToggleRail={() => setRailOpen((v) => !v)}
         onNewChat={newChat}
       />
 
-      <div className="relative flex min-h-0 flex-1">
-        {railOpen && !showChooser && (
-          <ConversationRail
-            conversations={conversations}
-            activeId={activeId}
-            onOpen={openConversation}
-            onDelete={removeConversation}
+      {showChooser ? (
+        <OrchardChooser orchards={orchards} onChoose={chooseOrchard} />
+      ) : (
+        <>
+          <Thread
+            messages={messages as unknown as UIMessage[]}
+            thinking={status === "submitted"}
+            general={general}
+            block={block}
           />
-        )}
-
-        <div className="flex min-w-0 flex-1 flex-col">
-          {showChooser ? (
-            <OrchardChooser orchards={orchards} onChoose={chooseOrchard} />
-          ) : (
-            <>
-              <Thread messages={messages as unknown as UIMessage[]} thinking={status === "submitted"} general={general} block={block} />
-              {error && (
-                <div className="mx-4 mb-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div>
-              )}
-              <Composer busy={busy} onSend={send} onStop={stop} hint={composerHint} />
-            </>
+          {error && (
+            <div className="mx-4 mb-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div>
           )}
-        </div>
-      </div>
+          <Composer busy={busy} onSend={send} onStop={stop} hint={composerHint} />
+        </>
+      )}
     </div>
   );
 }
@@ -369,8 +366,6 @@ function Header({
   blocks,
   blockId,
   onBlock,
-  railOpen,
-  onToggleRail,
   onNewChat,
 }: {
   mode: Mode;
@@ -383,20 +378,10 @@ function Header({
   blocks: CanaryBlock[];
   blockId: number | null;
   onBlock: (id: number | null) => void;
-  railOpen: boolean;
-  onToggleRail: () => void;
   onNewChat: () => void;
 }) {
   return (
     <header className="relative z-30 flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-raised/70 px-3 py-2.5 backdrop-blur-xl sm:px-5">
-      <button
-        onClick={onToggleRail}
-        className="grid size-8 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2 hover:text-ink"
-        title={railOpen ? "Hide chats" : "Show chats"}
-      >
-        {railOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
-      </button>
-
       <CanaryAvatar size={30} />
       <div className="mr-1 min-w-0">
         <h2 className="truncate font-display text-base font-bold text-ink">Canary</h2>
@@ -546,63 +531,6 @@ function OrchardChooser({
         </ul>
       </div>
     </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Conversation rail                                                   */
-/* ------------------------------------------------------------------ */
-
-function ConversationRail({
-  conversations,
-  activeId,
-  onOpen,
-  onDelete,
-}: {
-  conversations: CanaryConversation[];
-  activeId: string | null;
-  onOpen: (id: string) => void;
-  onDelete: (id: string) => void;
-}) {
-  return (
-    <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-line bg-surface/60 p-2 sm:flex">
-      <p className="px-2 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-        History
-      </p>
-      {conversations.length === 0 && (
-        <p className="px-2 py-1 text-xs text-ink-faint">No conversations yet.</p>
-      )}
-      <ul className="space-y-0.5">
-        {conversations.map((c) => (
-          <li key={c.id} className="group relative">
-            <button
-              onClick={() => onOpen(c.id)}
-              className={cn(
-                "w-full rounded-lg px-2 py-1.5 pr-7 text-left transition",
-                c.id === activeId ? "bg-brand-500/12" : "hover:bg-surface-2",
-              )}
-            >
-              <span
-                className={cn(
-                  "block truncate text-xs font-medium",
-                  c.id === activeId ? "text-brand-700" : "text-ink",
-                )}
-              >
-                {c.title || c.blockName || "Untitled chat"}
-              </span>
-              {c.preview && <span className="block truncate text-[11px] text-ink-faint">{c.preview}</span>}
-            </button>
-            <button
-              onClick={() => onDelete(c.id)}
-              className="absolute right-1 top-1.5 hidden size-5 place-items-center rounded text-ink-faint transition hover:bg-surface-2 hover:text-danger group-hover:grid"
-              title="Delete chat"
-            >
-              <Trash2 className="size-3.5" />
-            </button>
-          </li>
-        ))}
-      </ul>
-    </aside>
   );
 }
 

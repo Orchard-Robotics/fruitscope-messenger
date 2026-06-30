@@ -20,14 +20,21 @@ interface CanaryUiState {
   expanded: boolean;
   /** A request (from the sidebar) for the panel to open a conversation. */
   openRequest: { id: string; token: number } | null;
+  /** A request (from the sidebar) for the panel to start a fresh chat. */
+  newChatRequest: { token: number } | null;
 
   /** Panel → store: publish the current orchard + conversation list. */
   publish: (orchard: string, conversations: CanaryConversation[]) => void;
+  /** Update just the conversation list (e.g. the sidebar removing a deleted one). */
+  setConversations: (conversations: CanaryConversation[]) => void;
   setActiveConversationId: (id: string | null) => void;
   setExpanded: (expanded: boolean) => void;
   /** Sidebar → panel: ask the panel to open a conversation. */
   requestOpen: (id: string) => void;
   consumeOpenRequest: () => void;
+  /** Sidebar → panel: ask the panel to start a new chat. */
+  requestNewChat: () => void;
+  consumeNewChatRequest: () => void;
 }
 
 export const useCanaryUi = create<CanaryUiState>((set) => ({
@@ -36,8 +43,10 @@ export const useCanaryUi = create<CanaryUiState>((set) => ({
   activeConversationId: null,
   expanded: false,
   openRequest: null,
+  newChatRequest: null,
 
   publish: (orchard, conversations) => set({ orchard, conversations }),
+  setConversations: (conversations) => set({ conversations }),
   setActiveConversationId: (activeConversationId) => set({ activeConversationId }),
   setExpanded: (expanded) => set({ expanded }),
   requestOpen: (id) =>
@@ -46,4 +55,6 @@ export const useCanaryUi = create<CanaryUiState>((set) => ({
       openRequest: { id, token: (s.openRequest?.token ?? 0) + 1 },
     })),
   consumeOpenRequest: () => set({ openRequest: null }),
+  requestNewChat: () => set((s) => ({ newChatRequest: { token: (s.newChatRequest?.token ?? 0) + 1 } })),
+  consumeNewChatRequest: () => set({ newChatRequest: null }),
 }));
