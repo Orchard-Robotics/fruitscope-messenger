@@ -77,8 +77,9 @@ canary.get("/orchards", async (req, res) => {
   const jwt = await tokenOr409(req, res);
   if (!jwt) return;
   const userId = userIdOf(req);
+  const cached = await users.fruitscopeOrchards(userId).catch(() => null);
   try {
-    const info = await fs.getUserInfo(jwt);
+    const info = await fs.getUserInfo(jwt, cached?.[0]?.code);
     const orchards = (info.accessible_orchards ?? []).map((o) => ({
       code: o.orchard_code,
       name: o.orchard_name || o.orchard_code,
@@ -91,13 +92,10 @@ canary.get("/orchards", async (req, res) => {
     // FruitScope unreachable (network / 5xx) → serve the cached list so the
     // picker still works. Auth failures (401/403) are NOT papered over with a
     // stale cache — those need a real reconnect, surfaced as-is.
-    if (err instanceof fs.FruitscopeApiError && err.status >= 500) {
-      const cached = await users.fruitscopeOrchards(userId).catch(() => null);
-      if (cached && cached.length) {
-        console.warn(`[canary] user=${userId} /user-info down (${err.status}); serving ${cached.length} cached orchards`);
-        res.json({ orchards: cached });
-        return;
-      }
+    if (err instanceof fs.FruitscopeApiError && err.status >= 500 && cached && cached.length) {
+      console.warn(`[canary] user=${userId} /user-info down (${err.status}); serving ${cached.length} cached orchards`);
+      res.json({ orchards: cached });
+      return;
     }
     sendUpstreamError(res, err);
   }

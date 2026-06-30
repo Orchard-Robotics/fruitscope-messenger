@@ -61,6 +61,27 @@ function cookieHeader(authJwt: string, jar?: Map<string, string>): string {
   return [...parts].map(([k, v]) => `${k}=${v}`).join("; ");
 }
 
+/**
+ * The user's primary orchard code, decoded from the `auth_jwt` payload (`db`).
+ * Not verified — we already trust the token (we minted nothing); we only read a
+ * claim. Used to seed `/user-info`, which requires an `orchard_code`.
+ */
+function jwtPrimaryOrchard(jwt: string): string | null {
+  try {
+    const part = jwt.split(".")[1];
+    if (!part) return null;
+    const payload = JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as {
+      db?: unknown;
+      orchard?: unknown;
+    };
+    if (typeof payload.db === "string" && payload.db) return payload.db;
+    if (typeof payload.orchard === "string" && payload.orchard) return payload.orchard;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** Best-effort error message from an upstream JSON/text body. */
 async function errorMessage(res: Response): Promise<string> {
   try {
@@ -210,13 +231,24 @@ export interface FsPrepareContextResult {
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Orchards the user may use Canary in (with display names). No switch needed. */
-export async function getUserInfo(authJwt: string): Promise<FsUserInfo> {
-  const res = await fetch(url("/user-info"), {
-    method: "GET",
-    headers: { Cookie: cookieHeader(authJwt) },
-  });
-  if (!res.ok) throw new FruitscopeApiError(res.status, await errorMessage(res));
+/**
+ * The user's accessible orchards (with names), the same source the FruitScope AI
+ * view uses. `/user-info` REQUIRES an `orchard_code` (any orchard the user can
+ * access), so we seed it with the primary from the token (or a cached fallback
+ * passed by the caller). `accessible_orchards` is the user's full list regardless
+ * of which seed we pass.
+ */
+export async function getUserInfo(authJwt: string, fallbackOrchard?: string): Promise<FsUserInfo> {
+  const seed = jwtPrimaryOrchard(authJwt) ?? fallbackOrchard;
+  if (!seed) {
+    throw new FruitscopeApiError(409, "No orchard is associated with your FruitScope account.");
+  }
+  const res = await call(
+    "GET",
+    `/user-info?orchard_code=${encodeURIComponent(seed)}`,
+    seed,
+    cookieHeader(authJwt),
+  );
   return (await res.json()) as FsUserInfo;
 }
 

@@ -1,8 +1,7 @@
-import { ChevronRight, Hash, Loader2, Lock, MessageSquare, Plus, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ChevronRight, Hash, Lock, MessageSquare, Plus, Users } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import type { Channel, ID, User } from "@shared/index";
-import { canaryApi } from "@/lib/canary";
 import { cn } from "@/lib/cn";
 import { channelTitle, isGroupDm, isSelfDm } from "@/lib/channel";
 import { chat } from "@/lib/socket";
@@ -310,24 +309,9 @@ function CanaryTree({
   const setExpanded = useCanaryUi((s) => s.setExpanded);
   const conversations = useCanaryUi((s) => s.conversations);
   const activeConversationId = useCanaryUi((s) => s.activeConversationId);
-  const publish = useCanaryUi((s) => s.publish);
-  const canaryOrchard = useCanaryUi((s) => s.orchard);
-  const orchardCode = useChatStore((s) => s.orchard?.code);
-  const [loading, setLoading] = useState(false);
-
-  // Populate the tree even before the panel has been opened: on first expand
-  // with nothing cached, fetch the current orchard's conversations.
-  useEffect(() => {
-    if (!expanded || conversations.length || loading) return;
-    const code = canaryOrchard || orchardCode;
-    if (!code) return;
-    setLoading(true);
-    void canaryApi
-      .conversations(code)
-      .then((c) => publish(code, c))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [expanded, conversations.length, loading, canaryOrchard, orchardCode, publish]);
+  // The panel publishes the (valid) orchard + its conversations; the tree just
+  // mirrors them. `loaded` distinguishes "panel hasn't run yet" from "no chats".
+  const loaded = useCanaryUi((s) => s.orchard !== "");
 
   return (
     <li>
@@ -361,13 +345,10 @@ function CanaryTree({
 
       {expanded && (
         <ul className="ml-3 mt-0.5 space-y-0.5 border-l border-line pl-2">
-          {loading && (
-            <li className="flex items-center gap-1.5 px-2 py-1 text-xs text-ink-faint">
-              <Loader2 className="size-3 animate-spin" /> Loading…
+          {conversations.length === 0 && (
+            <li className="px-2 py-1 text-xs text-ink-faint">
+              {loaded ? "No chats yet" : "Open Canary to view your chats"}
             </li>
-          )}
-          {!loading && conversations.length === 0 && (
-            <li className="px-2 py-1 text-xs text-ink-faint">No chats yet</li>
           )}
           {conversations.map((c) => {
             const active = dmActive && c.id === activeConversationId;
