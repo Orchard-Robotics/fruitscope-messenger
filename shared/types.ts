@@ -206,6 +206,38 @@ export interface ModelCatalog {
   defaultModelId: string;
 }
 
+/** A managed LLM bot, as shown in the admin Bots section. */
+export interface AdminBot {
+  id: ID;
+  displayName: string;
+  username: string;
+  avatarUrl: string | null;
+  hue: number;
+  status: UserStatus;
+  /** pi-ai model id ("provider/key"). */
+  model: string;
+  /** Human label for the model (e.g. "Claude Haiku 4.5"). */
+  modelLabel: string;
+  systemPrompt: string;
+  /** The workspace the bot belongs to (its first membership), or null. */
+  orchard: { id: ID; code: string; name: string } | null;
+}
+
+/** A conversation (channel or DM) in the admin Conversations monitor. */
+export interface AdminConversation {
+  id: ID;
+  orchard: { id: ID; code: string; name: string };
+  kind: ChannelKind;
+  /** Channel name, or a synthesized title for DMs (participant names). */
+  title: string;
+  isPrivate: boolean;
+  memberCount: number;
+  messageCount: number;
+  lastMessageAt: Timestamp | null;
+  /** Short plain-text preview of the latest message. */
+  lastMessagePreview: string | null;
+}
+
 /** The result of syncing one orchard. */
 export interface SyncReport {
   orchardCode: string;

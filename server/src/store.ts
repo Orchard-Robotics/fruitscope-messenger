@@ -3,6 +3,8 @@ import type { Orchard as DbOrchard, User as DbUser } from "@prisma/client";
 import { nanoid } from "nanoid";
 
 import type {
+  AdminBot,
+  AdminConversation,
   AdminUser,
   Bootstrap,
   Channel,
@@ -17,6 +19,7 @@ import type {
   User,
   UserStatus,
 } from "@shared/index";
+import { modelLabel } from "./llm";
 import type { FruitscopeIdentity } from "./oidc";
 import { prisma } from "./prisma";
 import { publicUrl } from "./storage";
@@ -47,6 +50,22 @@ function mapUser(row: DbUser): User {
 
 function mapOrchard(row: DbOrchard): Orchard {
   return { id: row.id, code: row.code, name: row.name, createdAt: row.createdAt.getTime() };
+}
+
+function mapAdminBot(row: DbUser & { orchards: { orchard: DbOrchard }[] }): AdminBot {
+  const o = row.orchards[0]?.orchard;
+  return {
+    id: row.id,
+    displayName: row.displayName,
+    username: row.username,
+    avatarUrl: row.avatarKey ? publicUrl(row.avatarKey) : null,
+    hue: row.hue,
+    status: row.status as UserStatus,
+    model: row.botModel ?? "",
+    modelLabel: modelLabel(row.botModel ?? ""),
+    systemPrompt: row.botSystemPrompt ?? "",
+    orchard: o ? { id: o.id, code: o.code, name: o.name } : null,
+  };
 }
 
 function mapChannel(row: DbChannel): Channel {
@@ -219,6 +238,13 @@ export const users = {
 
   isSuperAdmin: async (id: ID): Promise<boolean> =>
     (await prisma.user.findUnique({ where: { id } }))?.isSuperAdmin ?? false,
+
+  /** Map several users by id — for resolving message authors in the admin monitor. */
+  byIds: async (ids: ID[]): Promise<User[]> => {
+    if (ids.length === 0) return [];
+    const rows = await prisma.user.findMany({ where: { id: { in: ids } } });
+    return rows.map(mapUser);
+  },
 
   /** Of the given OIDC subs, which already have a local user — for sync previews. */
   existingOidcSubs: async (subs: string[]): Promise<Set<string>> => {
@@ -503,6 +529,74 @@ export const bots = {
     if (!row || !row.isBot || !row.botModel) return null;
     return { displayName: row.displayName, model: row.botModel, systemPrompt: row.botSystemPrompt ?? "" };
   },
+
+  /** Every managed LLM bot (Canary excluded) for the admin Bots section. */
+  all: async (): Promise<AdminBot[]> => {
+    const rows = await prisma.user.findMany({
+      where: { isBot: true, botModel: { not: null }, id: { not: CANARY.id } },
+      include: { orchards: { include: { orchard: true }, take: 1, orderBy: { joinedAt: "asc" } } },
+      orderBy: { displayName: "asc" },
+    });
+    return rows.map(mapAdminBot);
+  },
+
+  /** One managed bot by id, or null. */
+  byIdAdmin: async (id: ID): Promise<AdminBot | null> => {
+    const row = await prisma.user.findUnique({
+      where: { id },
+      include: { orchards: { include: { orchard: true }, take: 1, orderBy: { joinedAt: "asc" } } },
+    });
+    if (!row || !row.isBot || !row.botModel || row.id === CANARY.id) return null;
+    return mapAdminBot(row);
+  },
+
+  /** Update a bot's name / model / prompt, and optionally move it to another
+   *  workspace (replacing its memberships). Returns the updated bot or null. */
+  update: async (
+    id: ID,
+    fields: {
+      displayName?: string | undefined;
+      model?: string | undefined;
+      systemPrompt?: string | undefined;
+      orchardId?: ID | undefined;
+    },
+  ): Promise<AdminBot | null> => {
+    const existing = await prisma.user.findUnique({
+      where: { id },
+      include: { orchards: { select: { orchardId: true } } },
+    });
+    if (!existing || !existing.isBot || !existing.botModel || existing.id === CANARY.id) return null;
+
+    await prisma.user.update({
+      where: { id },
+      data: {
+        ...(fields.displayName !== undefined ? { displayName: fields.displayName } : {}),
+        ...(fields.model !== undefined ? { botModel: fields.model } : {}),
+        ...(fields.systemPrompt !== undefined ? { botSystemPrompt: fields.systemPrompt } : {}),
+      },
+    });
+
+    const currentOrchard = existing.orchards[0]?.orchardId;
+    if (fields.orchardId && fields.orchardId !== currentOrchard) {
+      // Move workspaces: drop the bot from its old channels + workspace, then
+      // join the new one fresh (it rejoins channels there when next @mentioned).
+      await prisma.channelMember.deleteMany({ where: { userId: id } });
+      await prisma.orchardMembership.deleteMany({ where: { userId: id } });
+      await orchards.ensureMembership(fields.orchardId, id);
+    }
+    return bots.byIdAdmin(id);
+  },
+
+  /** Permanently delete a bot AND its messages. Returns false if not a bot. */
+  remove: async (id: ID): Promise<boolean> => {
+    const existing = await prisma.user.findUnique({ where: { id } });
+    if (!existing || !existing.isBot || existing.id === CANARY.id) return false;
+    // Message.author has no cascade, so clear the bot's messages first; deleting
+    // the user then cascades memberships, reactions and reads.
+    await prisma.message.deleteMany({ where: { authorId: id } });
+    await prisma.user.delete({ where: { id } });
+    return true;
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -513,6 +607,47 @@ export const channels = {
   byId: async (id: ID): Promise<Channel | undefined> => {
     const row = await prisma.channel.findUnique({ where: { id }, include: channelInclude });
     return row ? mapChannel(row) : undefined;
+  },
+
+  /** Every conversation across all workspaces, newest-activity first — for the
+   *  admin Conversations monitor. Includes member/message counts + a last-message
+   *  preview (mention tokens resolved to names). */
+  allForAdmin: async (): Promise<AdminConversation[]> => {
+    const [rows, allUsers] = await Promise.all([
+      prisma.channel.findMany({
+        include: {
+          orchard: true,
+          members: { select: { userId: true } },
+          _count: { select: { messages: true, members: true } },
+          messages: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1 },
+        },
+      }),
+      prisma.user.findMany({ select: { id: true, displayName: true } }),
+    ]);
+    const nameById = new Map(allUsers.map((u) => [u.id, u.displayName]));
+    const strip = (content: string): string =>
+      content.replace(/<@([A-Za-z0-9_-]+)>/g, (_full, id: string) => `@${nameById.get(id) ?? "someone"}`);
+
+    return rows
+      .map((c): AdminConversation => {
+        const last = c.messages[0];
+        const title =
+          c.kind === "dm"
+            ? c.members.map((m) => nameById.get(m.userId) ?? "Someone").join(", ")
+            : c.name;
+        return {
+          id: c.id,
+          orchard: { id: c.orchard.id, code: c.orchard.code, name: c.orchard.name },
+          kind: c.kind as ChannelKind,
+          title,
+          isPrivate: c.isPrivate,
+          memberCount: c._count.members,
+          messageCount: c._count.messages,
+          lastMessageAt: last ? last.createdAt.getTime() : null,
+          lastMessagePreview: last ? strip(last.content).slice(0, 100) : null,
+        };
+      })
+      .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
   },
 
   /** Channels in `orchardId` that are public, or that the user is a member of. */

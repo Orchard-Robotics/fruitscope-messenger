@@ -9,7 +9,7 @@ import { ChannelHeader } from "./ChannelHeader";
 import { Composer } from "./Composer";
 import { MasqueradeBanner } from "./MasqueradeBanner";
 import { MessageList } from "./MessageList";
-import { UserManagementModal } from "./UserManagementModal";
+import { AdminConsole } from "./admin/AdminConsole";
 
 // Code-split: the Canary panel pulls in the AI SDK + markdown renderer, which
 // shouldn't weigh down the initial chat bundle. It loads when first opened.
@@ -119,7 +119,7 @@ export function Workspace() {
         }}
       />
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
-      <UserManagementModal open={usersOpen} onClose={() => setUsersOpen(false)} />
+      <AdminConsole open={usersOpen} onClose={() => setUsersOpen(false)} />
     </div>
   );
 }

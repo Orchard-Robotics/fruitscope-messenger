@@ -72,7 +72,7 @@ export function AccountMenu({
       {isSuperAdmin && (
         <>
           <div className="my-1 h-px bg-line" />
-          <Item icon={Users} label="User management" onClick={() => { onClose(); onOpenUserManagement(); }} />
+          <Item icon={Users} label="Admin console" onClick={() => { onClose(); onOpenUserManagement(); }} />
         </>
       )}
 

@@ -484,6 +484,80 @@ api.post("/admin/bots", requireAuth, requireRealAdmin, async (req, res) => {
   res.json({ bot });
 });
 
+/** Every managed bot (for the admin Bots section). */
+api.get("/admin/bots", requireAuth, requireRealAdmin, async (_req, res) => {
+  res.json({ bots: await bots.all() });
+});
+
+const updateBotSchema = z.object({
+  displayName: z.string().trim().min(1).max(80).optional(),
+  model: z.string().min(1).optional(),
+  systemPrompt: z.string().max(8000).optional(),
+  orchardId: z.string().min(1).optional(),
+});
+
+/** Edit a bot: name, model, system prompt, and/or workspace. */
+api.patch("/admin/bots/:id", requireAuth, requireRealAdmin, async (req, res) => {
+  const parsed = updateBotSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid update" });
+    return;
+  }
+  if (parsed.data.model && !isKnownModelId(parsed.data.model)) {
+    res.status(400).json({ error: "That model isn't available." });
+    return;
+  }
+  if (parsed.data.orchardId && !(await orchards.byId(parsed.data.orchardId))) {
+    res.status(404).json({ error: "That workspace doesn't exist." });
+    return;
+  }
+  const bot = await bots.update((req.params.id ?? ""), parsed.data);
+  if (!bot) {
+    res.status(404).json({ error: "Bot not found" });
+    return;
+  }
+  const updated = await users.byId(bot.id);
+  if (updated) await broadcastUserUpdate(updated); // reflect a name change live
+  res.json({ bot });
+});
+
+/** Permanently delete a bot and its messages. */
+api.delete("/admin/bots/:id", requireAuth, requireRealAdmin, async (req, res) => {
+  const ok = await bots.remove((req.params.id ?? ""));
+  if (!ok) {
+    res.status(404).json({ error: "Bot not found" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+/* ------------------------------------------------------------------ */
+/* Admin — conversation monitor (read any channel across workspaces)    */
+/* ------------------------------------------------------------------ */
+
+/** Every conversation across all workspaces (newest activity first). */
+api.get("/admin/conversations", requireAuth, requireRealAdmin, async (_req, res) => {
+  res.json({ conversations: await channels.allForAdmin() });
+});
+
+/** Read a conversation's messages (admins can read any). Pages back via
+ *  ?beforeAt=<ms>&beforeId=<id> (the oldest loaded cursor). */
+api.get("/admin/conversations/:id/messages", requireAuth, requireRealAdmin, async (req, res) => {
+  const channel = await channels.byId((req.params.id ?? ""));
+  if (!channel) {
+    res.status(404).json({ error: "Conversation not found" });
+    return;
+  }
+  const beforeAt = Number(req.query.beforeAt);
+  const beforeId = typeof req.query.beforeId === "string" ? req.query.beforeId : undefined;
+  const before = beforeId && Number.isFinite(beforeAt) ? { createdAt: beforeAt, id: beforeId } : undefined;
+  const page = await messages.page(channel.id, { ...(before ? { before } : {}), limit: 50 });
+  // Resolve authors here — the admin reads across workspaces, so the client's
+  // user store won't have them all.
+  const authors = await users.byIds([...new Set(page.messages.map((m) => m.authorId))]);
+  res.json({ channel, messages: page.messages, authors, hasMore: page.hasMore });
+});
+
 /**
  * Message search across the channels the user can see in their orchard.
  * Channels/people are searched client-side (already in the store); this is the

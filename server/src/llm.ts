@@ -76,6 +76,11 @@ export function isKnownModelId(id: string): boolean {
   return resolveModel(id) !== null;
 }
 
+/** Human label for a model id (e.g. "Claude Haiku 4.5"), or the id if unknown. */
+export function modelLabel(id: string): string {
+  return resolveModel(id)?.model.name ?? id;
+}
+
 /** A known id as-is, else the default — so a stale selection can't break a turn. */
 export function resolveModelId(id: string | null | undefined): string {
   return id && isKnownModelId(id) ? id : DEFAULT_MODEL_ID;

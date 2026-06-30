@@ -1,7 +1,11 @@
 import type {
+  AdminBot,
+  AdminConversation,
   AdminUser,
   Bootstrap,
+  Channel,
   Message,
+  MessageCursor,
   ModelCatalog,
   Orchard,
   SyncOrchardOption,
@@ -114,4 +118,30 @@ export const rest = {
       method: "POST",
       body: JSON.stringify(input),
     })).bot,
+  /** Every managed bot. */
+  adminBots: async (): Promise<AdminBot[]> =>
+    (await request<{ bots: AdminBot[] }>("/admin/bots")).bots,
+  /** Edit a bot (name / model / system prompt / workspace); returns it. */
+  updateBot: async (
+    id: string,
+    fields: { displayName?: string; model?: string; systemPrompt?: string; orchardId?: string },
+  ): Promise<AdminBot> =>
+    (await request<{ bot: AdminBot }>(`/admin/bots/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    })).bot,
+  /** Permanently delete a bot and its messages. */
+  deleteBot: (id: string) =>
+    request<{ ok: true }>(`/admin/bots/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  /* ---- admin: conversation monitor ---- */
+  /** Every conversation across all workspaces (newest activity first). */
+  adminConversations: async (): Promise<AdminConversation[]> =>
+    (await request<{ conversations: AdminConversation[] }>("/admin/conversations")).conversations,
+  /** Read a conversation's messages (admins can read any); pages back via cursor. */
+  adminConversationMessages: (id: string, before?: MessageCursor) =>
+    request<{ channel: Channel; messages: Message[]; authors: User[]; hasMore: boolean }>(
+      `/admin/conversations/${encodeURIComponent(id)}/messages` +
+        (before ? `?beforeAt=${before.createdAt}&beforeId=${encodeURIComponent(before.id)}` : ""),
+    ),
 };
