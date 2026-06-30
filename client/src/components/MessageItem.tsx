@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { timeOfDay } from "@/lib/format";
 import { chat } from "@/lib/socket";
 import { Avatar } from "./Avatar";
+import { CanaryAvatar } from "./canary/CanaryAvatar";
 import { MessageContent } from "./MessageContent";
 
 const FALLBACK: Pick<User, "displayName" | "hue"> = { displayName: "?", hue: 0 };
@@ -39,7 +40,11 @@ export function MessageItem({ message, author, showHeader, meId, highlighted }: 
     >
       <div className="w-10 shrink-0">
         {showHeader ? (
-          <Avatar user={author ?? FALLBACK} size={40} />
+          author?.isBot ? (
+            <CanaryAvatar size={40} className="rounded-xl" />
+          ) : (
+            <Avatar user={author ?? FALLBACK} size={40} />
+          )
         ) : (
           <span className="mt-0.5 hidden select-none text-right text-[10px] leading-5 text-ink-faint group-hover:block">
             {timeOfDay(message.createdAt)}

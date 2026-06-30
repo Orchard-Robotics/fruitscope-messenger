@@ -76,7 +76,7 @@ function jwtPayload(jwt: string): { db?: unknown; orchard?: unknown; is_admin?: 
 }
 
 /** The user's primary orchard code (`db`), used to seed `/user-info`. */
-function jwtPrimaryOrchard(jwt: string): string | null {
+export function jwtPrimaryOrchard(jwt: string): string | null {
   const p = jwtPayload(jwt);
   if (typeof p?.db === "string" && p.db) return p.db;
   if (typeof p?.orchard === "string" && p.orchard) return p.orchard;
@@ -462,4 +462,45 @@ export async function chat(
   // Surface non-stream errors (e.g. 429 budget) before the route starts piping.
   if (!res.ok) throw new FruitscopeApiError(res.status, await errorMessage(res));
   return res;
+}
+
+/**
+ * Like `chat()`, but consumes the SSE stream server-side and returns the
+ * assembled answer text — for the in-channel Canary agent, which posts a normal
+ * chat message instead of streaming to a browser.
+ */
+export async function chatCollect(
+  authJwt: string,
+  orchardCode: string,
+  body: unknown,
+): Promise<string> {
+  const res = await chat(authJwt, orchardCode, body);
+  if (!res.body) return "";
+  const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n\n")) >= 0) {
+      const frame = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 2);
+      for (const line of frame.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const payload = trimmed.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        try {
+          const obj = JSON.parse(payload) as { type?: string; delta?: string };
+          if (obj.type === "text-delta" && typeof obj.delta === "string") text += obj.delta;
+        } catch {
+          /* ignore non-JSON frames */
+        }
+      }
+    }
+  }
+  return text.trim();
 }
