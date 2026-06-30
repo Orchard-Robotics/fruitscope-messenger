@@ -1,10 +1,23 @@
-import { Send, Smile } from "lucide-react";
+import {
+  Bold,
+  Code,
+  Italic,
+  Link as LinkIcon,
+  List,
+  ListOrdered,
+  Quote,
+  Send,
+  Smile,
+  SquareCode,
+  Strikethrough,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ID, User } from "@shared/index";
 import { REACTION_EMOJI } from "@shared/index";
 import { cn } from "@/lib/cn";
 import { resetToLatest } from "@/lib/jump";
+import { applyMarkdown, type MdKind } from "@/lib/markdownInput";
 import {
   detectMentionQuery,
   encodeMentions,
@@ -39,6 +52,7 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
+  const pendingSelection = useRef<{ start: number; end: number } | null>(null);
   const typingActive = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -107,6 +121,11 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
       el.setSelectionRange(pendingCaret.current, pendingCaret.current);
       pendingCaret.current = null;
     }
+    if (pendingSelection.current) {
+      el.focus();
+      el.setSelectionRange(pendingSelection.current.start, pendingSelection.current.end);
+      pendingSelection.current = null;
+    }
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
   }, [text]);
@@ -132,6 +151,18 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
     setText(before + insert + after);
     pendingCaret.current = before.length + insert.length;
     setMention(null);
+  };
+
+  /** Apply a markdown format to the current textarea selection. */
+  const format = (kind: MdKind) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? text.length;
+    const end = el.selectionEnd ?? start;
+    const res = applyMarkdown(text, start, end, kind);
+    setText(res.value);
+    pendingSelection.current = { start: res.selStart, end: res.selEnd };
+    pingTyping();
   };
 
   /** People mentioned in `content` who can't see this conversation. */
@@ -212,6 +243,21 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
           </button>
         </div>
       )}
+
+      {/* Slack-style formatting toolbar */}
+      <div className="mb-1.5 flex flex-wrap items-center gap-0.5 px-2">
+        <FmtBtn icon={Bold} title="Bold  ⌘B" onClick={() => format("bold")} />
+        <FmtBtn icon={Italic} title="Italic  ⌘I" onClick={() => format("italic")} />
+        <FmtBtn icon={Strikethrough} title="Strikethrough  ⌘⇧X" onClick={() => format("strike")} />
+        <FmtDivider />
+        <FmtBtn icon={Code} title="Code  ⌘⇧C" onClick={() => format("code")} />
+        <FmtBtn icon={SquareCode} title="Code block" onClick={() => format("codeblock")} />
+        <FmtBtn icon={Quote} title="Quote" onClick={() => format("quote")} />
+        <FmtDivider />
+        <FmtBtn icon={List} title="Bulleted list" onClick={() => format("bullet")} />
+        <FmtBtn icon={ListOrdered} title="Numbered list" onClick={() => format("ordered")} />
+        <FmtBtn icon={LinkIcon} title="Link" onClick={() => format("link")} />
+      </div>
 
       <div className="relative flex items-end gap-2 rounded-[26px] border border-line bg-canvas px-3 py-2 shadow-floating transition focus-within:border-brand-400">
         {/* @mention autocomplete */}
@@ -318,6 +364,18 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
                 return;
               }
             }
+            // Formatting shortcuts (Slack-style).
+            if (e.metaKey || e.ctrlKey) {
+              const k = e.key.toLowerCase();
+              const map: Record<string, MdKind> = e.shiftKey
+                ? { x: "strike", c: "code" }
+                : { b: "bold", i: "italic" };
+              if (map[k]) {
+                e.preventDefault();
+                format(map[k]);
+                return;
+              }
+            }
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               void send();
@@ -342,4 +400,34 @@ export function Composer({ channelId, placeholder }: { channelId: ID; placeholde
       </div>
     </div>
   );
+}
+
+/** A formatting-toolbar button. mousedown (not click) so the textarea keeps focus
+ *  + its selection while the markdown is applied. */
+function FmtBtn({
+  icon: Icon,
+  title,
+  onClick,
+}: {
+  icon: typeof Bold;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        onClick();
+      }}
+      className="grid size-7 place-items-center rounded-md text-ink-faint transition hover:bg-surface-2 hover:text-ink"
+    >
+      <Icon className="size-4" />
+    </button>
+  );
+}
+
+function FmtDivider() {
+  return <span className="mx-1 h-4 w-px bg-line" />;
 }

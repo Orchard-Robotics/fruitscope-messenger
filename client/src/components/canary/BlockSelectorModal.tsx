@@ -126,7 +126,12 @@ export function BlockSelectorModal({
 
     map.on("load", () => {
       map.resize();
-      if (features.length) {
+      // Open zoomed in on the most-recently-scanned block; fall back to fitting
+      // all of them when none have a scan.
+      const latest = [...located].filter((b) => scanTime(b) > 0).sort((a, b) => scanTime(b) - scanTime(a))[0];
+      if (latest && latest.lat != null && latest.lon != null) {
+        map.jumpTo({ center: [latest.lon, latest.lat], zoom: 14.5 });
+      } else if (features.length) {
         const bnds = new maplibregl.LngLatBounds();
         for (const f of features) bnds.extend(f.geometry.coordinates as [number, number]);
         map.fitBounds(bnds, { padding: 60, maxZoom: 15, duration: 0 });
