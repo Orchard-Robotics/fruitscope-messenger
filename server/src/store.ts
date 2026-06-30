@@ -678,6 +678,20 @@ export const messages = {
     return mapMessage(row);
   },
 
+  /** Edit a message's text (caller checks authorship); stamps `editedAt`. */
+  edit: async (id: ID, content: string): Promise<Message | undefined> => {
+    try {
+      const row = await prisma.message.update({
+        where: { id },
+        data: { content, editedAt: new Date() },
+        include: messageInclude,
+      });
+      return mapMessage(row);
+    } catch {
+      return undefined; // gone
+    }
+  },
+
   /**
    * Full-text-ish search across the given channels (the caller passes the ones
    * the user may see). Case-insensitive substring match, newest first — backed
@@ -692,6 +706,14 @@ export const messages = {
       take: limit,
     });
     return rows.map(mapMessage);
+  },
+
+  /** A window centered on a message identified by id (deep-link open), or null
+   *  if it's gone or not in this channel. */
+  aroundById: async (channelId: ID, messageId: ID, half: number): Promise<MessageWindow | null> => {
+    const target = await prisma.message.findUnique({ where: { id: messageId } });
+    if (!target || target.channelId !== channelId) return null;
+    return messages.around(channelId, { createdAt: target.createdAt.getTime(), id: target.id }, half);
   },
 
   /**

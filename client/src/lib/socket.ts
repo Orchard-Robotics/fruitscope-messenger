@@ -109,6 +109,9 @@ export const chat = {
   react: (messageId: ID, emoji: string): Promise<Result<Message>> =>
     withAck((cb) => getSocket().emit("message:react", { messageId, emoji }, cb)),
 
+  edit: (messageId: ID, content: string): Promise<Result<Message>> =>
+    withAck((cb) => getSocket().emit("message:edit", { messageId, content }, cb)),
+
   createChannel: (input: {
     name: string;
     topic?: string;
@@ -132,6 +135,10 @@ export const chat = {
   /** Load a window of messages centered on a target (for jumping to a result). */
   around: (channelId: ID, cursor: MessageCursor): Promise<Result<MessageWindow>> =>
     withAck((cb) => getSocket().emit("channel:around", { channelId, cursor }, cb)),
+
+  /** Load a window centered on a message by id (opening a shared deep link). */
+  aroundMessage: (channelId: ID, messageId: ID): Promise<Result<MessageWindow>> =>
+    withAck((cb) => getSocket().emit("channel:aroundMessage", { channelId, messageId }, cb)),
 
   typingStart: (channelId: ID): void => {
     getSocket().emit("typing:start", { channelId });

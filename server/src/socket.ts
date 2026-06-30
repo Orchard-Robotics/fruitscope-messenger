@@ -55,6 +55,10 @@ const sendSchema = z.object({
   content: z.string().trim().min(1).max(4000),
 });
 const reactSchema = z.object({ messageId: z.string().min(1), emoji: z.enum(REACTION_EMOJI) });
+const editSchema = z.object({
+  messageId: z.string().min(1),
+  content: z.string().trim().min(1).max(4000),
+});
 const createSchema = z.object({
   name: z
     .string()
@@ -258,6 +262,26 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     ack({ ok: true, data: redactMessage(updated, socket.data.isSuperAdmin) });
   });
 
+  socket.on("message:edit", async (payload, ack) => {
+    const parsed = editSchema.safeParse(payload);
+    if (!parsed.success) return ack({ ok: false, error: "Invalid edit" });
+
+    const target = await messages.byId(parsed.data.messageId);
+    const channel = target ? await channels.byId(target.channelId) : undefined;
+    if (!target || !channel || !canAccess(channel, userId, orchardId)) {
+      return ack({ ok: false, error: "Message not found" });
+    }
+    // Only the author may edit (no editing bots' or other people's messages).
+    if (target.authorId !== userId) {
+      return ack({ ok: false, error: "You can only edit your own messages" });
+    }
+
+    const updated = await messages.edit(target.id, parsed.data.content);
+    if (!updated) return ack({ ok: false, error: "Message not found" });
+    await emitMessage(io, channel.id, "message:updated", updated);
+    ack({ ok: true, data: redactMessage(updated, socket.data.isSuperAdmin) });
+  });
+
   socket.on("channel:create", async (payload, ack) => {
     const parsed = createSchema.safeParse(payload);
     if (!parsed.success) return ack({ ok: false, error: "Invalid channel name" });
@@ -434,6 +458,23 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
       return ack({ ok: false, error: "Channel not found" });
     }
     const window = await messages.around(channel.id, parsed.data.cursor, AROUND_HALF);
+    ack({
+      ok: true,
+      data: { ...window, messages: redactMessages(window.messages, socket.data.isSuperAdmin) },
+    });
+  });
+
+  socket.on("channel:aroundMessage", async (payload, ack) => {
+    const parsed = channelRef.safeParse({ channelId: payload?.channelId });
+    if (!parsed.success || typeof payload?.messageId !== "string") {
+      return ack({ ok: false, error: "Invalid request" });
+    }
+    const channel = await channels.byId(parsed.data.channelId);
+    if (!channel || !canAccess(channel, userId, orchardId)) {
+      return ack({ ok: false, error: "You can't open that message" });
+    }
+    const window = await messages.aroundById(channel.id, payload.messageId, AROUND_HALF);
+    if (!window) return ack({ ok: false, error: "That message no longer exists" });
     ack({
       ok: true,
       data: { ...window, messages: redactMessages(window.messages, socket.data.isSuperAdmin) },

@@ -34,6 +34,11 @@ export interface ClientToServerEvents {
     payload: { messageId: ID; emoji: string },
     ack: (res: Result<Message>) => void,
   ) => void;
+  // Edit your own message's text. Sets `editedAt`; broadcasts message:updated.
+  "message:edit": (
+    payload: { messageId: ID; content: string },
+    ack: (res: Result<Message>) => void,
+  ) => void;
   "channel:create": (
     payload: { name: string; topic?: string; isPrivate?: boolean },
     ack: (res: Result<Channel>) => void,
@@ -47,6 +52,13 @@ export interface ClientToServerEvents {
   "channel:addMembers": (
     payload: { channelId: ID; userIds: ID[] },
     ack: (res: Result<Channel>) => void,
+  ) => void;
+  // Loads a window centered on a message by id (for opening a shared deep link,
+  // where we only know the channel + message id, not the cursor). Fails if the
+  // message is gone or not in this channel.
+  "channel:aroundMessage": (
+    payload: { channelId: ID; messageId: ID },
+    ack: (res: Result<MessageWindow>) => void,
   ) => void;
   // Loads one page of a channel's messages. Omit `before` for the most recent
   // page (initial open); pass the oldest loaded cursor to page backwards.

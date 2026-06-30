@@ -33,6 +33,14 @@ export function parseMentionSegments(content: string): MentionSegment[] {
   return segments;
 }
 
+/** Stored content → editable text: `<@id>` tokens become `@username` so the
+ *  composer's `encodeMentions` can re-encode them on save (round-trips cleanly). */
+export function decodeMentionsToInput(content: string, users: Record<string, User>): string {
+  return parseMentionSegments(content)
+    .map((seg) => (seg.type === "text" ? seg.text : `@${users[seg.userId]?.username ?? "unknown"}`))
+    .join("");
+}
+
 /** Whether stored content mentions a given user id. */
 export function contentMentions(content: string, userId: string): boolean {
   for (const m of content.matchAll(tokenRe())) {

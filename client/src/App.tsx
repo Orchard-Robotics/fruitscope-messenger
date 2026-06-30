@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { rest } from "@/lib/api";
+import { clearMessageLink, openMessageLink, readMessageLink } from "@/lib/messageLink";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
 import { Login } from "./components/Login";
@@ -22,6 +23,8 @@ export function App() {
   const session = useChatStore((s) => s.session);
   const didInit = useRef(false);
   const [loginError] = useState(takeLoginError);
+  // Capture any shared message deep link before bootstrap, then open it after.
+  const [deepLink] = useState(readMessageLink);
 
   // Resume an existing session from the httpOnly cookie on first load.
   useEffect(() => {
@@ -36,12 +39,17 @@ export function App() {
         // isn't gated on a request waterfall.
         connectSocket();
         store.loadBootstrap(await rest.bootstrap());
+        // Now the channels are loaded — if we arrived via a message link, jump to it.
+        if (deepLink) {
+          void openMessageLink(deepLink.channelId, deepLink.messageId);
+          clearMessageLink();
+        }
       } catch {
         disconnectSocket();
         store.setSession("anon");
       }
     })();
-  }, []);
+  }, [deepLink]);
 
   if (session === "loading") return <Splash />;
   if (session === "anon") return <Login error={loginError} />;
