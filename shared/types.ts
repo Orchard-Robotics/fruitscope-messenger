@@ -93,6 +93,12 @@ export interface Bootstrap {
    * workspace switcher; regular users are scoped to the orchards they belong to.
    */
   isSuperAdmin: boolean;
+  /**
+   * Whether the user may use Canary's "general" mode (plain chat, no farm tools).
+   * Restricted to Orchard Robotics staff — mirrors the FruitScope backend gate —
+   * so the messenger only offers the toggle when it will actually take effect.
+   */
+  canUseGeneralMode: boolean;
 }
 
 /**

@@ -79,6 +79,47 @@ async function errorMessage(res: Response): Promise<string> {
 const url = (path: string): string => `${FRUITSCOPE_API_BASE}${path}`;
 
 /* ------------------------------------------------------------------ */
+/* Instrumented fetch — one place that logs EVERY upstream call        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Make one FruitScope call, logging it (method, path, orchard, status, ms) and
+ * normalising failures to `FruitscopeApiError`. A network failure is logged and
+ * surfaced as a 502. The successful `Response` is returned with its body intact
+ * (callers read JSON, capture cookies, or stream it).
+ */
+async function call(
+  method: string,
+  path: string,
+  orchardCode: string | null,
+  cookie: string,
+  init: { headers?: Record<string, string>; body?: string | FormData } = {},
+): Promise<Response> {
+  const tag = `[canary→fs] ${method} ${path}${orchardCode ? ` orchard=${orchardCode}` : ""}`;
+  const t0 = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url(path), {
+      method,
+      headers: { Cookie: cookie, ...(init.headers ?? {}) },
+      ...(init.body !== undefined ? { body: init.body } : {}),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`${tag} → NETWORK_ERROR ${Date.now() - t0}ms: ${msg}`);
+    throw new FruitscopeApiError(502, `Couldn't reach FruitScope (${msg}).`);
+  }
+  const ms = Date.now() - t0;
+  if (!res.ok) {
+    const detail = await errorMessage(res);
+    console.warn(`${tag} → ${res.status} ${ms}ms: ${detail}`);
+    throw new FruitscopeApiError(res.status, detail);
+  }
+  console.log(`${tag} → ${res.status} ${ms}ms`);
+  return res;
+}
+
+/* ------------------------------------------------------------------ */
 /* Orchard switch — the "switch-first" primitive                       */
 /* ------------------------------------------------------------------ */
 
@@ -88,15 +129,10 @@ const url = (path: string): string => `${FRUITSCOPE_API_BASE}${path}`;
  * has no access to that orchard, (401) when the token is rejected.
  */
 async function switchOrchard(authJwt: string, orchardCode: string): Promise<Map<string, string>> {
-  const res = await fetch(url("/switch-orchard"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: cookieHeader(authJwt),
-    },
+  const res = await call("POST", "/switch-orchard", orchardCode, cookieHeader(authJwt), {
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ orchard_code: orchardCode }),
   });
-  if (!res.ok) throw new FruitscopeApiError(res.status, await errorMessage(res));
   const jar = parseSetCookies(res);
   await res.body?.cancel().catch(() => {});
   return jar;
@@ -115,15 +151,11 @@ async function orchardJson<T>(
   body?: unknown,
 ): Promise<T> {
   const jar = await switchOrchard(authJwt, orchardCode);
-  const res = await fetch(url(path), {
-    method,
-    headers: {
-      Cookie: cookieHeader(authJwt, jar),
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  const res = await call(method, path, orchardCode, cookieHeader(authJwt, jar), {
+    ...(body !== undefined
+      ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+      : {}),
   });
-  if (!res.ok) throw new FruitscopeApiError(res.status, await errorMessage(res));
   return (await res.json()) as T;
 }
 

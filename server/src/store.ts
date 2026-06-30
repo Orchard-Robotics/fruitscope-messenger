@@ -583,5 +583,8 @@ export async function bootstrap(userId: ID, orchardId: ID): Promise<Bootstrap> {
     users: members,
     channels: visible,
     isSuperAdmin: meRow.isSuperAdmin,
+    // Canary "general" mode is Orchard Robotics staff only (matches the
+    // FruitScope backend gate, which is strictly email-domain based).
+    canUseGeneralMode: (meRow.email ?? "").trim().toLowerCase().endsWith("@orchard-robotics.com"),
   };
 }

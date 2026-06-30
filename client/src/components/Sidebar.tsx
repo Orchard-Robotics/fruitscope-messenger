@@ -1,10 +1,12 @@
-import { Hash, Lock, Plus, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ChevronRight, Hash, Loader2, Lock, MessageSquare, Plus, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { Channel, ID, User } from "@shared/index";
+import { canaryApi } from "@/lib/canary";
 import { cn } from "@/lib/cn";
 import { channelTitle, isGroupDm, isSelfDm } from "@/lib/channel";
 import { chat } from "@/lib/socket";
+import { useCanaryUi } from "@/store/canary";
 import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
 import { CanaryAvatar } from "./canary/CanaryAvatar";
@@ -129,14 +131,18 @@ export function Sidebar({
         <section>
           <SectionHeader label="Direct messages" onAdd={() => setNewDm(true)} addTitle="New message" />
           <ul className="mt-1 space-y-0.5">
-            {/* Pinned Canary (AI assistant) row. */}
+            {/* Pinned Canary (AI assistant) row, expandable into its chats. */}
             {canaryBot && (
-              <CanaryRow
-                active={(() => {
+              <CanaryTree
+                dmActive={(() => {
                   const dm = dmByPartner.get(canaryBot.id);
                   return !!dm && dm.id === activeChannelId;
                 })()}
-                onClick={() => void openDm(canaryBot.id)}
+                onOpenDm={() => void openDm(canaryBot.id)}
+                onOpenConversation={async (id) => {
+                  await openDm(canaryBot.id);
+                  useCanaryUi.getState().requestOpen(id);
+                }}
               />
             )}
             {/* Pinned "message yourself" row, Slack-style. */}
@@ -289,23 +295,99 @@ function PersonRow({
   );
 }
 
-// The pinned Canary (AI assistant) row — bird avatar + an "AI" tag.
-function CanaryRow({ active, onClick }: { active: boolean; onClick: () => void }) {
+// The pinned Canary (AI assistant) row — bird avatar + an "AI" tag — that
+// expands into its conversations, shown indented beneath it (a small tree).
+function CanaryTree({
+  dmActive,
+  onOpenDm,
+  onOpenConversation,
+}: {
+  dmActive: boolean;
+  onOpenDm: () => void;
+  onOpenConversation: (id: string) => void;
+}) {
+  const expanded = useCanaryUi((s) => s.expanded);
+  const setExpanded = useCanaryUi((s) => s.setExpanded);
+  const conversations = useCanaryUi((s) => s.conversations);
+  const activeConversationId = useCanaryUi((s) => s.activeConversationId);
+  const publish = useCanaryUi((s) => s.publish);
+  const canaryOrchard = useCanaryUi((s) => s.orchard);
+  const orchardCode = useChatStore((s) => s.orchard?.code);
+  const [loading, setLoading] = useState(false);
+
+  // Populate the tree even before the panel has been opened: on first expand
+  // with nothing cached, fetch the current orchard's conversations.
+  useEffect(() => {
+    if (!expanded || conversations.length || loading) return;
+    const code = canaryOrchard || orchardCode;
+    if (!code) return;
+    setLoading(true);
+    void canaryApi
+      .conversations(code)
+      .then((c) => publish(code, c))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [expanded, conversations.length, loading, canaryOrchard, orchardCode, publish]);
+
   return (
     <li>
-      <button
-        onClick={onClick}
+      <div
         className={cn(
-          "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition",
-          active ? "bg-brand-500/12 text-brand-700" : "text-ink-dim hover:bg-surface-2 hover:text-ink",
+          "group flex items-center gap-1 rounded-lg pr-1 transition",
+          dmActive && !activeConversationId ? "bg-brand-500/12" : "hover:bg-surface-2",
         )}
       >
-        <CanaryAvatar size={24} className="rounded-lg" />
-        <span className="truncate font-medium">Canary</span>
-        <span className="rounded bg-sun-500/15 px-1 text-[10px] font-bold uppercase tracking-wide text-sun-500">
-          AI
-        </span>
-      </button>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="grid size-6 shrink-0 place-items-center rounded text-ink-faint transition hover:text-ink"
+          aria-label={expanded ? "Collapse Canary chats" : "Expand Canary chats"}
+        >
+          <ChevronRight className={cn("size-3.5 transition-transform", expanded && "rotate-90")} />
+        </button>
+        <button
+          onClick={onOpenDm}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2 py-1.5 text-sm transition",
+            dmActive && !activeConversationId ? "text-brand-700" : "text-ink-dim group-hover:text-ink",
+          )}
+        >
+          <CanaryAvatar size={24} className="rounded-lg" />
+          <span className="truncate font-medium">Canary</span>
+          <span className="rounded bg-sun-500/15 px-1 text-[10px] font-bold uppercase tracking-wide text-sun-500">
+            AI
+          </span>
+        </button>
+      </div>
+
+      {expanded && (
+        <ul className="ml-3 mt-0.5 space-y-0.5 border-l border-line pl-2">
+          {loading && (
+            <li className="flex items-center gap-1.5 px-2 py-1 text-xs text-ink-faint">
+              <Loader2 className="size-3 animate-spin" /> Loading…
+            </li>
+          )}
+          {!loading && conversations.length === 0 && (
+            <li className="px-2 py-1 text-xs text-ink-faint">No chats yet</li>
+          )}
+          {conversations.map((c) => {
+            const active = dmActive && c.id === activeConversationId;
+            return (
+              <li key={c.id}>
+                <button
+                  onClick={() => onOpenConversation(c.id)}
+                  className={cn(
+                    "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs transition",
+                    active ? "bg-brand-500/12 text-brand-700" : "text-ink-dim hover:bg-surface-2 hover:text-ink",
+                  )}
+                >
+                  <MessageSquare className="size-3 shrink-0 text-ink-faint" />
+                  <span className="truncate">{c.title || c.blockName || "Untitled chat"}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </li>
   );
 }

@@ -31,8 +31,9 @@ export function App() {
     const store = useChatStore.getState();
     void (async () => {
       try {
-        const me = await rest.me();
-        store.signIn(me);
+        // `bootstrap` already includes `me`, so skip a separate `/me` round-trip.
+        // Open the socket in parallel with the bootstrap fetch so first paint
+        // isn't gated on a request waterfall.
         connectSocket();
         store.loadBootstrap(await rest.bootstrap());
       } catch {

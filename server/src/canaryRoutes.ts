@@ -27,6 +27,13 @@ canary.use(requireAuth);
 /** The authenticated user id (requireAuth has run, so `scope` is present). */
 const userIdOf = (req: Request): string => (req as unknown as AuthedRequest).scope.userId;
 
+// Trace every Canary request (method, path, user) so the whole flow is visible
+// in the logs — paired with the per-call `[canary→fs]` lines from fruitscope.ts.
+canary.use((req, _res, next) => {
+  console.log(`[canary] ${req.method} ${req.originalUrl} user=${userIdOf(req)}`);
+  next();
+});
+
 /** Resolve the caller's FruitScope token, or send a 409 telling them to reconnect. */
 async function tokenOr409(req: Request, res: ExpressResponse): Promise<string | null> {
   const jwt = await users.fruitscopeAuthJwt(userIdOf(req));
@@ -46,6 +53,7 @@ function sendUpstreamError(res: ExpressResponse, err: unknown): void {
     // 401/403 from upstream → the user can't act there; surface as-is. Collapse
     // 5xx to 502 (it's the upstream that failed, not this request).
     const status = err.status >= 500 ? 502 : err.status;
+    console.warn(`[canary] → ${status}: ${err.message}`);
     res.status(status).json({ error: err.message });
     return;
   }
@@ -59,7 +67,12 @@ const orchardParam = z.string().min(1).max(64);
 /* Orchards + blocks (the context pickers)                             */
 /* ------------------------------------------------------------------ */
 
-/** Orchards the signed-in user may use Canary in (code + display name). */
+/**
+ * Orchards the signed-in user may use Canary in (code + display name) — sourced
+ * straight from FruitScope's `/user-info`, NOT the messenger DB (the messenger
+ * only knows orchards people have signed into, so it would be incomplete).
+ * FruitScope returns EVERY orchard here for admins / super admins.
+ */
 canary.get("/orchards", async (req, res) => {
   const jwt = await tokenOr409(req, res);
   if (!jwt) return;
@@ -67,8 +80,11 @@ canary.get("/orchards", async (req, res) => {
     const info = await fs.getUserInfo(jwt);
     const orchards = (info.accessible_orchards ?? []).map((o) => ({
       code: o.orchard_code,
-      name: o.orchard_name,
+      name: o.orchard_name || o.orchard_code,
     }));
+    console.log(
+      `[canary] user=${userIdOf(req)} orchards=${orchards.length}${info.is_admin ? " (admin: all)" : ""}`,
+    );
     res.json({ orchards });
   } catch (err) {
     sendUpstreamError(res, err);

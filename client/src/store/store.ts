@@ -30,6 +30,8 @@ interface ChatState {
   orchard: Orchard | null;
   /** Whether the signed-in user is a FruitScope super admin (can switch orchards). */
   isSuperAdmin: boolean;
+  /** Whether the user may use Canary's "general" (non-farm) chat mode. */
+  canUseGeneralMode: boolean;
   session: SessionStatus;
   connected: boolean;
 
@@ -110,6 +112,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   me: null,
   orchard: null,
   isSuperAdmin: false,
+  canUseGeneralMode: false,
   session: "loading",
   connected: false,
 
@@ -137,6 +140,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       me: null,
       orchard: null,
       isSuperAdmin: false,
+      canUseGeneralMode: false,
       session: "anon",
       connected: false,
       users: {},
@@ -168,6 +172,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         me,
         orchard: data.orchard,
         isSuperAdmin: data.isSuperAdmin,
+        canUseGeneralMode: data.canUseGeneralMode,
         users,
         channels: toRecord(data.channels),
         session: "ready",
