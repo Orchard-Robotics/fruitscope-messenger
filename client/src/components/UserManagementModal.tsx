@@ -1,4 +1,15 @@
-import { Building2, Eye, Layers, Loader2, Search, ShieldCheck, Users, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  CloudDownload,
+  Eye,
+  Layers,
+  Loader2,
+  Search,
+  ShieldCheck,
+  Users,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -9,6 +20,7 @@ import { startMasquerade } from "@/lib/masquerade";
 import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
 import { PresenceDot } from "./PresenceDot";
+import { SyncFromFruitscope } from "./SyncFromFruitscope";
 
 interface Workspace {
   code: string;
@@ -25,6 +37,14 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
   const [query, setQuery] = useState("");
   const [workspace, setWorkspace] = useState<string | null>(null); // orchard code, or null = all
   const [pending, setPending] = useState<string | null>(null);
+  const [view, setView] = useState<"directory" | "sync">("directory");
+
+  const refreshUsers = () => {
+    void rest
+      .adminUsers()
+      .then(setUsers)
+      .catch((e) => setError(e instanceof Error ? e.message : "Couldn't load users."));
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -32,13 +52,12 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
     setError(null);
     setQuery("");
     setWorkspace(null);
-    rest
-      .adminUsers()
-      .then(setUsers)
-      .catch((e) => setError(e instanceof Error ? e.message : "Couldn't load users."));
+    setView("directory");
+    refreshUsers();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, onClose]);
 
   // Workspaces are derived from everyone's memberships (every orchard has members).
@@ -92,20 +111,43 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
     <div className="anim-fade-in fixed inset-0 z-50 grid place-items-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="anim-card-in relative z-10 flex h-[42rem] max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-line bg-raised shadow-2xl shadow-ink/10">
-        {/* Header + search */}
+        {/* Header (+ search in directory view) */}
         <div className="shrink-0 border-b border-line p-4">
           <div className="flex items-center gap-2">
-            <span className="grid size-8 place-items-center rounded-lg bg-brand-500/10 text-brand-600">
-              <Users className="size-4" />
-            </span>
+            {view === "sync" ? (
+              <button
+                onClick={() => setView("directory")}
+                className="grid size-8 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2 hover:text-ink"
+                aria-label="Back to directory"
+              >
+                <ArrowLeft className="size-4" />
+              </button>
+            ) : (
+              <span className="grid size-8 place-items-center rounded-lg bg-brand-500/10 text-brand-600">
+                <Users className="size-4" />
+              </span>
+            )}
             <div className="min-w-0 flex-1">
-              <h2 className="font-display text-base font-bold text-ink">User management</h2>
+              <h2 className="font-display text-base font-bold text-ink">
+                {view === "sync" ? "Sync from FruitScope" : "User management"}
+              </h2>
               <p className="text-xs text-ink-dim">
-                {users
-                  ? `${users.length} ${users.length === 1 ? "user" : "users"} across ${workspaces.length} ${workspaces.length === 1 ? "workspace" : "workspaces"}`
-                  : "Loading…"}
+                {view === "sync"
+                  ? "Create a workspace and provision its users."
+                  : users
+                    ? `${users.length} ${users.length === 1 ? "user" : "users"} across ${workspaces.length} ${workspaces.length === 1 ? "workspace" : "workspaces"}`
+                    : "Loading…"}
               </p>
             </div>
+            {view === "directory" && (
+              <button
+                onClick={() => setView("sync")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-dim transition hover:bg-brand-500/10 hover:text-brand-700"
+              >
+                <CloudDownload className="size-3.5" />
+                Sync from FruitScope
+              </button>
+            )}
             <button
               onClick={onClose}
               className="grid size-8 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2 hover:text-ink"
@@ -114,19 +156,24 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
               <X className="size-4" />
             </button>
           </div>
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5">
-            <Search className="size-4 shrink-0 text-ink-faint" />
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search across workspaces and users — name, @username, email, orchard…"
-              className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
-            />
-          </div>
+          {view === "directory" && (
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5">
+              <Search className="size-4 shrink-0 text-ink-faint" />
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search across workspaces and users — name, @username, email, orchard…"
+                className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
+              />
+            </div>
+          )}
         </div>
 
-        {/* Two panes: workspaces + users */}
+        {/* Body: directory (two panes) or the FruitScope sync view */}
+        {view === "sync" ? (
+          <SyncFromFruitscope onSynced={refreshUsers} />
+        ) : (
         <div className="flex min-h-0 flex-1">
           {/* Workspaces */}
           <aside className="hidden w-56 shrink-0 flex-col overflow-y-auto border-r border-line bg-surface/60 p-2 sm:flex">
@@ -201,6 +248,7 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
             </ul>
           </div>
         </div>
+        )}
       </div>
     </div>,
     document.body,

@@ -546,3 +546,127 @@ export async function chatCollect(
     .trim();
   return { answer, reasoning };
 }
+
+/* ------------------------------------------------------------------ */
+/* User-management sync — list orchards + their users (admin only)     */
+/*                                                                     */
+/* Powers the admin "sync users from FruitScope" action. We act AS the */
+/* signed-in admin via their auth_jwt cookie. These /user-management/* */
+/* endpoints take the orchard as a query param (no switch-first), and  */
+/* serialize snake_case (by_alias=False) — mirrors farmagent's client. */
+/* ------------------------------------------------------------------ */
+
+/** A FruitScope orchard the acting admin can see. */
+export interface FsSyncOrchard {
+  code: string;
+  name: string | null;
+  accountTier: string | null;
+}
+
+/** A FruitScope user with access to an orchard, plus their permission level. */
+export interface FsSyncUser {
+  /** Integer FruitScope user id — the SAME value that becomes the OIDC `sub`. */
+  userId: number;
+  email: string | null;
+  name: string | null;
+  /** "admin" | "owner" | "orchard" | "block" | "ranch" | "none". */
+  permissionLevel: string;
+}
+
+export interface FsOrchardUsers {
+  orchardCode: string;
+  orchardName: string | null;
+  users: FsSyncUser[];
+}
+
+/**
+ * GET a /user-management endpoint as the acting admin (auth_jwt cookie only).
+ * A 401/403 — or any redirect, which means an unauthenticated bounce to /login —
+ * is surfaced as FruitscopeApiError(401) so the caller can prompt a re-login.
+ */
+async function syncGet(authJwt: string, path: string): Promise<unknown> {
+  const tag = `[sync→fs] GET ${path}`;
+  const t0 = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url(path), {
+      headers: { Cookie: cookieHeader(authJwt), Accept: "application/json" },
+      redirect: "manual", // a 3xx to /login means the token was rejected
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`${tag} → NETWORK_ERROR ${Date.now() - t0}ms: ${msg}`);
+    throw new FruitscopeApiError(502, `Couldn't reach FruitScope (${msg}).`);
+  }
+  const ms = Date.now() - t0;
+  if (res.status === 401 || res.status === 403 || (res.status >= 300 && res.status < 400)) {
+    console.warn(`${tag} → ${res.status} ${ms}ms (auth)`);
+    await res.body?.cancel().catch(() => {});
+    throw new FruitscopeApiError(401, "FruitScope rejected the request — sign in again.");
+  }
+  if (!res.ok) {
+    const detail = await errorMessage(res);
+    console.warn(`${tag} → ${res.status} ${ms}ms: ${detail}`);
+    throw new FruitscopeApiError(res.status, detail);
+  }
+  console.log(`${tag} → ${res.status} ${ms}ms`);
+  return res.json();
+}
+
+/** Build a display name from a FruitScope user's name parts. */
+function fsDisplayName(u: {
+  first_name?: string | null;
+  last_name?: string | null;
+  user_name?: string | null;
+}): string | null {
+  const full = [u.first_name, u.last_name]
+    .filter((p): p is string => !!p && p.trim().length > 0)
+    .join(" ")
+    .trim();
+  return full || (u.user_name?.trim() || null);
+}
+
+/** Orchards the acting admin can see (every orchard, for a super admin). */
+export async function listAccessibleOrchards(authJwt: string): Promise<FsSyncOrchard[]> {
+  const data = (await syncGet(authJwt, "/user-management/accessible-orchards")) as {
+    orchards?: { orchard_code?: string; orchard_name?: string | null; account_tier?: string | null }[];
+  };
+  return (data.orchards ?? [])
+    .filter((o): o is { orchard_code: string } & typeof o => typeof o.orchard_code === "string")
+    .map((o) => ({
+      code: o.orchard_code,
+      name: o.orchard_name?.trim() || null,
+      accountTier: o.account_tier ?? null,
+    }));
+}
+
+/** Every user with access to `orchardCode`, with their permission level. */
+export async function listOrchardUsers(authJwt: string, orchardCode: string): Promise<FsOrchardUsers> {
+  const data = (await syncGet(
+    authJwt,
+    `/user-management/orchard-users?orchard_code=${encodeURIComponent(orchardCode)}`,
+  )) as {
+    orchard_code?: string;
+    orchard_name?: string | null;
+    users?: {
+      user_id?: number;
+      email?: string | null;
+      first_name?: string | null;
+      last_name?: string | null;
+      user_name?: string | null;
+      permission_level?: string | null;
+    }[];
+  };
+  return {
+    orchardCode: data.orchard_code ?? orchardCode,
+    orchardName: data.orchard_name?.trim() || null,
+    users: (data.users ?? [])
+      .filter((u): u is { user_id: number } & typeof u => typeof u.user_id === "number")
+      .map((u) => ({
+        userId: u.user_id,
+        email: u.email?.trim() || null,
+        name: fsDisplayName(u),
+        permissionLevel: (u.permission_level ?? "none").toLowerCase(),
+      })),
+  };
+}

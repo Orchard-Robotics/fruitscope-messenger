@@ -130,6 +130,72 @@ export interface AdminUser {
   orchards: { code: string; name: string; role: string }[];
 }
 
+/* ------------------------------------------------------------------ */
+/* Sync from FruitScope (admin) — provision a workspace + its users    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The local role a FruitScope permission level maps to. `admin` → super admin
+ * (no orchard membership); `manager`/`member` → workspace members; `skipped` →
+ * no access, not provisioned.
+ */
+export type SyncedRole = "admin" | "manager" | "member" | "skipped";
+
+/** A FruitScope orchard offered in the sync picker. */
+export interface SyncOrchardOption {
+  code: string;
+  name: string | null;
+  accountTier: string | null;
+  /** Whether a workspace for this orchard already exists locally. */
+  existing: boolean;
+}
+
+/** A FruitScope user previewed before syncing an orchard. */
+export interface SyncUserPreview {
+  /** Integer FruitScope user id (becomes the OIDC `sub`). */
+  userId: number;
+  name: string | null;
+  email: string | null;
+  /** Raw FruitScope permission level. */
+  permissionLevel: string;
+  /** The local role we'd assign. */
+  role: SyncedRole;
+  /** Whether this user already exists locally. */
+  existing: boolean;
+}
+
+/** What a preview returns: the orchard's name + the users we'd sync. */
+export interface SyncPreview {
+  orchardCode: string;
+  orchardName: string | null;
+  users: SyncUserPreview[];
+}
+
+/** The outcome for one user after a sync. */
+export interface SyncUserResult {
+  userId: number;
+  name: string | null;
+  email: string | null;
+  permissionLevel: string;
+  role: SyncedRole;
+  action: "created" | "updated" | "skipped";
+}
+
+/** The result of syncing one orchard. */
+export interface SyncReport {
+  orchardCode: string;
+  orchardName: string | null;
+  /** True if the workspace didn't exist before this sync. */
+  workspaceCreated: boolean;
+  total: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  /** Users added as workspace members (excludes global admins + skipped). */
+  members: number;
+  users: SyncUserResult[];
+}
+
 /**
  * Keyset-pagination cursor: a stable total order over (createdAt, id). Paging
  * by this (rather than a bare timestamp) avoids dropping/duplicating messages

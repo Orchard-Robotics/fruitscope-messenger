@@ -1,4 +1,13 @@
-import type { AdminUser, Bootstrap, Message, Orchard, User } from "@shared/index";
+import type {
+  AdminUser,
+  Bootstrap,
+  Message,
+  Orchard,
+  SyncOrchardOption,
+  SyncPreview,
+  SyncReport,
+  User,
+} from "@shared/index";
 
 /** Full-page navigation target that starts the "Sign in with FruitScope" flow. */
 export const LOGIN_URL = "/api/auth/login";
@@ -66,4 +75,18 @@ export const rest = {
     }),
   /** Stop masquerading. */
   stopMasquerade: () => request<{ ok: true }>("/admin/masquerade/stop", { method: "POST" }),
+
+  /* ---- admin: sync workspaces + users from FruitScope ---- */
+  /** Orchards the admin can sync (flagged if already a workspace). */
+  syncOrchards: async (): Promise<SyncOrchardOption[]> =>
+    (await request<{ orchards: SyncOrchardOption[] }>("/admin/sync/orchards")).orchards,
+  /** Preview the users syncing an orchard would provision (no writes). */
+  syncOrchardUsers: (code: string) =>
+    request<SyncPreview>(`/admin/sync/orchards/${encodeURIComponent(code)}/users`),
+  /** Run the sync; returns a report of what changed. */
+  runSync: (orchardCode: string) =>
+    request<SyncReport>("/admin/sync/orchard", {
+      method: "POST",
+      body: JSON.stringify({ orchardCode }),
+    }),
 };

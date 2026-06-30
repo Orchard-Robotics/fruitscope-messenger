@@ -178,6 +178,15 @@ export const orchards = {
     });
   },
 
+  /** Add (or update the role of) a member — used by the FruitScope sync. */
+  upsertMembership: async (orchardId: ID, userId: ID, role: string): Promise<void> => {
+    await prisma.orchardMembership.upsert({
+      where: { orchardId_userId: { orchardId, userId } },
+      create: { orchardId, userId, role },
+      update: { role },
+    });
+  },
+
   /**
    * Find-or-create an orchard by its FruitScope code. New orchards are created
    * lazily the first time a member of them signs in (first writer sets the name).
@@ -204,6 +213,16 @@ export const users = {
 
   isSuperAdmin: async (id: ID): Promise<boolean> =>
     (await prisma.user.findUnique({ where: { id } }))?.isSuperAdmin ?? false,
+
+  /** Of the given OIDC subs, which already have a local user — for sync previews. */
+  existingOidcSubs: async (subs: string[]): Promise<Set<string>> => {
+    if (subs.length === 0) return new Set();
+    const rows = await prisma.user.findMany({
+      where: { oidcSub: { in: subs } },
+      select: { oidcSub: true },
+    });
+    return new Set(rows.map((r) => r.oidcSub));
+  },
 
   displayName: async (id: ID): Promise<string | undefined> =>
     (await prisma.user.findUnique({ where: { id } }))?.displayName,
@@ -303,6 +322,52 @@ export const users = {
       },
     });
     return mapUser(row);
+  },
+
+  /**
+   * Provision (or refresh) a local user from a FruitScope sync — for users who
+   * haven't logged in yet. Keyed by the OIDC `sub` (= the FruitScope user id as a
+   * string), so when they later sign in, `upsertFromOidc` finds this same record
+   * instead of creating a duplicate. Never sets a session token (they have none
+   * until they log in) and only ever PROMOTES to admin, never demotes.
+   */
+  upsertFromFruitscope: async (input: {
+    userId: number;
+    name: string | null;
+    email: string | null;
+    makeAdmin: boolean;
+  }): Promise<{ user: User; created: boolean }> => {
+    const oidcSub = String(input.userId);
+    const niceName = input.name?.trim() || null;
+    const email = input.email?.trim() || null;
+
+    const existing = await prisma.user.findUnique({ where: { oidcSub } });
+    if (existing) {
+      const row = await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          ...(niceName ? { displayName: niceName } : {}),
+          ...(email ? { email } : {}),
+          ...(input.makeAdmin ? { isSuperAdmin: true } : {}),
+        },
+      });
+      return { user: mapUser(row), created: false };
+    }
+
+    const displayName = niceName ?? email ?? `FruitScope user ${input.userId}`;
+    const base = sanitizeHandle(email?.split("@")[0] || niceName || `user-${input.userId}`);
+    const row = await prisma.user.create({
+      data: {
+        id: nanoid(10),
+        oidcSub,
+        username: await freeUsername(base),
+        displayName,
+        email,
+        isSuperAdmin: input.makeAdmin,
+        hue: hashHue(oidcSub),
+      },
+    });
+    return { user: mapUser(row), created: true };
   },
 
   /**

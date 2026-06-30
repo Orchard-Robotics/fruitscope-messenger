@@ -27,8 +27,10 @@ import {
 import type { FruitscopeIdentity } from "./oidc";
 import { beginLogin, completeLogin, decodeTx, encodeTx } from "./oidc";
 import { broadcastUserUpdate } from "./socket";
+import { FruitscopeApiError } from "./fruitscope";
 import { redactMessages } from "./messageEmit";
 import { bootstrap, channels, messages, orchards, users } from "./store";
+import { listSyncOrchards, previewOrchard, syncOrchard } from "./sync";
 import { deleteObject, uploadObject } from "./storage";
 
 export const api: Router = Router();
@@ -335,6 +337,82 @@ api.post("/admin/masquerade", requireAuth, requireRealAdmin, async (req, res) =>
 api.post("/admin/masquerade/stop", requireAuth, requireRealAdmin, async (req, res) => {
   await clearSessionMasquerade(tokenFromRequest(req) as string);
   res.json({ ok: true });
+});
+
+/* ------------------------------------------------------------------ */
+/* Admin — sync workspaces + users from FruitScope                     */
+/* Acts as the REAL admin via their captured FruitScope session token.  */
+/* ------------------------------------------------------------------ */
+
+/** The real admin's FruitScope auth_jwt, or send 409 and return null. */
+async function adminFruitscopeJwt(
+  req: import("express").Request,
+  res: import("express").Response,
+): Promise<string | null> {
+  const scope = (req as AuthedRequest).scope;
+  const jwt = await users.fruitscopeAuthJwt(scope.realUserId);
+  if (!jwt) {
+    res.status(409).json({ error: "Reconnect FruitScope — sign out and sign in again." });
+    return null;
+  }
+  return jwt;
+}
+
+/** Turn a FruitScope failure into a tidy HTTP response. */
+function sendSyncError(res: import("express").Response, err: unknown): void {
+  if (err instanceof FruitscopeApiError) {
+    // 401 from upstream = the admin's token was rejected → ask them to re-login.
+    const status = err.status === 401 ? 409 : err.status;
+    res.status(status).json({ error: err.message });
+    return;
+  }
+  console.error("[sync] failed:", err);
+  res.status(500).json({ error: "Sync failed. Please try again." });
+}
+
+/** Orchards the admin can sync (from FruitScope), flagged if already a workspace. */
+api.get("/admin/sync/orchards", requireAuth, requireRealAdmin, async (req, res) => {
+  const jwt = await adminFruitscopeJwt(req, res);
+  if (!jwt) return;
+  try {
+    res.json({ orchards: await listSyncOrchards(jwt) });
+  } catch (err) {
+    sendSyncError(res, err);
+  }
+});
+
+/** Preview the users that syncing an orchard would provision (no writes). */
+api.get("/admin/sync/orchards/:code/users", requireAuth, requireRealAdmin, async (req, res) => {
+  const jwt = await adminFruitscopeJwt(req, res);
+  if (!jwt) return;
+  const code = req.params.code?.trim();
+  if (!code) {
+    res.status(400).json({ error: "Missing orchard code" });
+    return;
+  }
+  try {
+    res.json(await previewOrchard(jwt, code));
+  } catch (err) {
+    sendSyncError(res, err);
+  }
+});
+
+const syncSchema = z.object({ orchardCode: z.string().min(1) });
+
+/** Run the sync: create/refresh the workspace + its users. Returns a report. */
+api.post("/admin/sync/orchard", requireAuth, requireRealAdmin, async (req, res) => {
+  const jwt = await adminFruitscopeJwt(req, res);
+  if (!jwt) return;
+  const parsed = syncSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Missing orchard code" });
+    return;
+  }
+  try {
+    res.json(await syncOrchard(jwt, parsed.data.orchardCode));
+  } catch (err) {
+    sendSyncError(res, err);
+  }
 });
 
 /**
