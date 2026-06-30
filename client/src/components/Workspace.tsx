@@ -1,12 +1,18 @@
-import { MessageSquareHeart, WifiOff } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Loader2, MessageSquareHeart, WifiOff } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
-import { channelTitle, isSelfDm } from "@/lib/channel";
+import { channelTitle, isCanaryDm, isSelfDm } from "@/lib/channel";
 import { signOut } from "@/lib/session";
 import { useChatStore } from "@/store/store";
 import { ChannelHeader } from "./ChannelHeader";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
+
+// Code-split: the Canary panel pulls in the AI SDK + markdown renderer, which
+// shouldn't weigh down the initial chat bundle. It loads when first opened.
+const CanaryPanel = lazy(() =>
+  import("./canary/CanaryPanel").then((m) => ({ default: m.CanaryPanel })),
+);
 import { PreferencesModal } from "./PreferencesModal";
 import { ProfileModal } from "./ProfileModal";
 import { SearchModal } from "./SearchModal";
@@ -43,6 +49,8 @@ export function Workspace() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const isCanary = !!channel && !!meId && isCanaryDm(channel, users, meId);
+
   const placeholder = useMemo(() => {
     if (!channel || !meId) return "Message";
     if (channel.kind === "channel") return `Message #${channel.name}`;
@@ -77,11 +85,18 @@ export function Workspace() {
         <main className="relative flex min-w-0 flex-1 flex-col">
           {!connected && <ConnectionBanner />}
           {channel && activeChannelId ? (
-            <>
-              <ChannelHeader />
-              <MessageList key={`${activeChannelId}:${jumpToken}`} channelId={activeChannelId} />
-              <Composer channelId={activeChannelId} placeholder={placeholder} />
-            </>
+            isCanary ? (
+              // Canary's DM is the embedded FruitScope AI assistant, not a thread.
+              <Suspense fallback={<PanelLoading />}>
+                <CanaryPanel />
+              </Suspense>
+            ) : (
+              <>
+                <ChannelHeader />
+                <MessageList key={`${activeChannelId}:${jumpToken}`} channelId={activeChannelId} />
+                <Composer channelId={activeChannelId} placeholder={placeholder} />
+              </>
+            )
           ) : (
             <EmptyState />
           )}
@@ -98,6 +113,14 @@ export function Workspace() {
         }}
       />
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
+    </div>
+  );
+}
+
+function PanelLoading() {
+  return (
+    <div className="grid flex-1 place-items-center text-ink-dim">
+      <Loader2 className="size-6 animate-spin" />
     </div>
   );
 }

@@ -23,6 +23,17 @@ export function dmPartnerId(channel: Channel, meId: ID): ID | undefined {
   return others.length === 1 ? others[0] : undefined;
 }
 
+/** The Canary bot user in the directory, if present (a global, per-orchard bot). */
+export function canaryUser(users: Record<ID, User>): User | undefined {
+  return Object.values(users).find((u) => u.isBot);
+}
+
+/** Whether a channel is the 1:1 DM with the Canary assistant. */
+export function isCanaryDm(channel: Channel, users: Record<ID, User>, meId: ID): boolean {
+  const partnerId = dmPartnerId(channel, meId);
+  return partnerId !== undefined && users[partnerId]?.isBot === true;
+}
+
 /** Human title: channel name; for DMs the participants' names (or "… (you)"). */
 export function channelTitle(
   channel: Channel,

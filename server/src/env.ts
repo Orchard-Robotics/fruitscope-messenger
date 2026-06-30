@@ -27,6 +27,17 @@ export const oidc = {
 /** True once the confidential client is configured (so prod can fail loudly). */
 export const oidcConfigured = oidc.clientSecret.length > 0;
 
+/* ------------------------------------------------------------------ */
+/* FruitScope API — the backend that powers the Canary AI assistant.   */
+/* The messenger calls it server-to-server, acting as the signed-in    */
+/* user via their `session_jwt` (presented as the `auth_jwt` cookie).  */
+/* ------------------------------------------------------------------ */
+
+/** Base origin of the FruitScope API (the same backend the web app uses). */
+export const FRUITSCOPE_API_BASE = (
+  process.env.FRUITSCOPE_API_BASE ?? "https://api.fruitscope.com"
+).replace(/\/+$/, "");
+
 /**
  * The namespace super admins are registered into. Regular users land on their
  * `primary_orchard`; super admins always land here and can switch elsewhere.

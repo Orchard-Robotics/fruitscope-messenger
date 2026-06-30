@@ -10,11 +10,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/react": "^3.0.218",
+    "ai": "^6.0.216",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-markdown": "^9.1.0",
     "react-virtuoso": "^4.12.3",
+    "remark-gfm": "^4.0.1",
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^2.6.0",
     "zustand": "^5.0.2"

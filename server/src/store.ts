@@ -35,6 +35,7 @@ function mapUser(row: DbUser): User {
     id: row.id,
     username: row.username,
     displayName: row.displayName,
+    isBot: row.isBot,
     hue: row.hue,
     // Build the public CDN/emulator URL from the stored key at read time.
     avatarUrl: row.avatarKey ? publicUrl(row.avatarKey) : null,
@@ -194,11 +195,27 @@ export const users = {
     const displayName =
       identity.displayName ?? identity.preferredUsername ?? identity.email ?? "FruitScope user";
 
+    // The `session_jwt` we'll act with against the FruitScope API (Canary). Only
+    // overwrite the stored token when the claim actually carries one, so a path
+    // without it (dev-login) never clears a previously-captured token.
+    const ttl = identity.authJwtTtlSeconds ?? 24 * 60 * 60;
+    const jwtData = identity.authJwt
+      ? {
+          fruitscopeAuthJwt: identity.authJwt,
+          fruitscopeAuthJwtExpiresAt: new Date(Date.now() + ttl * 1000),
+        }
+      : {};
+
     const existing = await prisma.user.findUnique({ where: { oidcSub: identity.sub } });
     if (existing) {
       const row = await prisma.user.update({
         where: { id: existing.id },
-        data: { displayName, email: identity.email ?? null, isSuperAdmin: identity.isSuperAdmin },
+        data: {
+          displayName,
+          email: identity.email ?? null,
+          isSuperAdmin: identity.isSuperAdmin,
+          ...jwtData,
+        },
       });
       return mapUser(row);
     }
@@ -215,9 +232,24 @@ export const users = {
         email: identity.email ?? null,
         isSuperAdmin: identity.isSuperAdmin,
         hue: hashHue(identity.sub),
+        ...jwtData,
       },
     });
     return mapUser(row);
+  },
+
+  /**
+   * The user's current FruitScope `auth_jwt` for API calls (Canary), or null if
+   * we never captured one or it has expired. The proxy presents this to
+   * api.fruitscope.com as the `auth_jwt` cookie. Never leaves the server.
+   */
+  fruitscopeAuthJwt: async (id: ID): Promise<string | null> => {
+    const row = await prisma.user.findUnique({ where: { id } });
+    if (!row?.fruitscopeAuthJwt) return null;
+    if (row.fruitscopeAuthJwtExpiresAt && row.fruitscopeAuthJwtExpiresAt.getTime() < Date.now()) {
+      return null;
+    }
+    return row.fruitscopeAuthJwt;
   },
 
   setStatus: async (id: ID, status: UserStatus): Promise<User | undefined> => {
@@ -228,6 +260,54 @@ export const users = {
     }
   },
 };
+
+/* ------------------------------------------------------------------ */
+/* Canary — the built-in AI assistant (a global bot)                   */
+/* ------------------------------------------------------------------ */
+
+/** The Canary bot's stable identity. Fixed id so the client can rely on it. */
+export const CANARY = {
+  id: "canary",
+  oidcSub: "fruitscope:canary-bot",
+  username: "canary",
+  displayName: "Canary",
+  /** A warm canary-yellow hue for the avatar fallback. */
+  hue: 47,
+} as const;
+
+export const canary = {
+  /** Find-or-create the global Canary bot user (idempotent; call on boot). */
+  ensureUser: async (): Promise<User> => {
+    const row = await prisma.user.upsert({
+      where: { id: CANARY.id },
+      // Bots are always "present"; they never hold a socket, so this status sticks.
+      create: {
+        id: CANARY.id,
+        oidcSub: CANARY.oidcSub,
+        username: CANARY.username,
+        displayName: CANARY.displayName,
+        isBot: true,
+        status: "online",
+        hue: CANARY.hue,
+      },
+      update: { isBot: true, displayName: CANARY.displayName, status: "online" },
+    });
+    return mapUser(row);
+  },
+
+  /**
+   * Ensure Canary is a member of an orchard, so it shows up in the people list
+   * and a DM can be opened with it. Lazy + idempotent — called when an orchard is
+   * bootstrapped, so the bot is global without a one-shot backfill.
+   */
+  ensureMembership: async (orchardId: ID): Promise<void> => {
+    await canary.ensureUser();
+    await orchards.ensureMembership(orchardId, CANARY.id);
+  },
+};
+
+/** Whether a user id is the Canary bot. */
+export const isCanary = (userId: ID): boolean => userId === CANARY.id;
 
 /* ------------------------------------------------------------------ */
 /* Channels — always scoped to an orchard                              */
@@ -479,6 +559,10 @@ export const reads = {
 /* ------------------------------------------------------------------ */
 
 export async function bootstrap(userId: ID, orchardId: ID): Promise<Bootstrap> {
+  // Canary is a global bot — lazily ensure it's a member of whatever orchard is
+  // being bootstrapped, so it always appears in the people/DM list (no backfill).
+  await canary.ensureMembership(orchardId);
+
   const [meRow, orchard] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId } }),
     orchards.byId(orchardId),

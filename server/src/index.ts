@@ -11,16 +11,26 @@ import type {
   ServerToClientEvents,
   SocketData,
 } from "@shared/index";
+import { canary as canaryRoutes } from "./canaryRoutes";
 import { isProd, oidcConfigured, PORT, usingGcsEmulator } from "./env";
 import { api } from "./http";
 import { prisma } from "./prisma";
 import { attachSockets } from "./socket";
 import { ensureMediaBucket } from "./storage";
+import { canary } from "./store";
 
 if (isProd && !oidcConfigured) {
   console.warn(
     "⚠️  OIDC_CLIENT_SECRET is not set — 'Sign in with FruitScope' is disabled until it is configured.",
   );
+}
+
+// Ensure the global Canary AI bot user exists (idempotent). It's added to each
+// orchard lazily on bootstrap, so it shows up everywhere without a backfill.
+try {
+  await canary.ensureUser();
+} catch (err) {
+  console.warn("⚠️  Could not ensure the Canary bot user:", err);
 }
 
 // Local dev: create the media bucket in the fake-gcs emulator if it's missing.
@@ -40,6 +50,7 @@ app.use(compression()); // gzip API responses (the static SPA is served by GCS+C
 app.use(cors());
 app.use(express.json());
 app.use(cookieParser()); // reads the httpOnly session cookie
+app.use("/api/canary", canaryRoutes);
 app.use("/api", api);
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

@@ -132,6 +132,9 @@ if (allowDevLogin) {
     isSuperAdmin: z.boolean().optional(),
     orchardCode: z.string().optional(),
     orchardName: z.string().optional(),
+    // Optional: paste a real FruitScope `session_jwt` to exercise Canary against
+    // a live backend without the full OIDC round-trip. Dev-only.
+    authJwt: z.string().optional(),
   });
 
   api.post("/auth/dev-login", async (req, res) => {
@@ -151,6 +154,8 @@ if (allowDevLogin) {
         ? { code: d.orchardCode, name: d.orchardName ?? d.orchardCode }
         : undefined,
       orchardCodes: d.orchardCode ? [d.orchardCode] : [],
+      authJwt: d.authJwt,
+      authJwtTtlSeconds: undefined,
     };
     try {
       const { token, orchard } = await provisionSession(identity);

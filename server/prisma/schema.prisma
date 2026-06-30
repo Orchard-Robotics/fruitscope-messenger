@@ -50,6 +50,17 @@ model User {
   // Mirrors the `fruitscope.is_admin` claim. Super admins land on the
   // orchard-robotics namespace and may switch into any other orchard.
   isSuperAdmin Boolean @default(false)
+  // True for the built-in Canary AI assistant — a global bot present in every
+  // orchard. The client renders its DM as the embedded Canary chat panel rather
+  // than a normal message thread, and never shows it a composer of its own.
+  isBot       Boolean @default(false)
+  // The FruitScope OIDC `session_jwt` claim: a short-lived (24h) bearer token
+  // that lets the messenger act as this user against the FruitScope API (Canary).
+  // Presented to api.fruitscope.com as the `auth_jwt` cookie. Re-minted on every
+  // login; null for the Canary bot and any non-OIDC (dev-login) user. Server-side
+  // only — it is NEVER sent to the browser.
+  fruitscopeAuthJwt          String?
+  fruitscopeAuthJwtExpiresAt DateTime?
   hue         Int
   // GCS object key of the uploaded profile picture (e.g. "avatars/<id>-<rand>.webp"),
   // or null for none. The public URL is built from MEDIA_PUBLIC_BASE at read time

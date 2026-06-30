@@ -51,6 +51,11 @@ const fruitscopeClaimSchema = z
   .object({
     is_admin: z.boolean().optional(),
     role: z.string().nullish(),
+    // Short-lived (24h) bearer that lets a relying party act as this user against
+    // the FruitScope API — presented as the `auth_jwt` cookie. We hold it
+    // server-side to drive the Canary AI assistant.
+    session_jwt: z.string().nullish(),
+    session_jwt_expires_in: z.number().nullish(),
     primary_orchard: z
       .object({
         orchard_code: z.string(),
@@ -71,6 +76,14 @@ export interface FruitscopeIdentity {
   primaryOrchard: { code: string; name: string } | undefined;
   /** Every orchard code the user has permissions on (drives the switcher). */
   orchardCodes: string[];
+  /**
+   * The FruitScope `session_jwt`: a bearer token (presented as the `auth_jwt`
+   * cookie) that lets us call the FruitScope API as this user — the credential
+   * behind the Canary assistant. Held server-side only. Undefined when the claim
+   * doesn't carry one. `authJwtTtlSeconds` is its lifetime (default 24h).
+   */
+  authJwt: string | undefined;
+  authJwtTtlSeconds: number | undefined;
 }
 
 /** Extract the identity we provision from, from the verified ID-token claims. */
@@ -92,6 +105,9 @@ export function identityFromClaims(claims: client.IDToken): FruitscopeIdentity {
       ? { code: primary.orchard_code, name: str(primary.orchard_name) ?? primary.orchard_code }
       : undefined,
     orchardCodes: fs?.orchards ?? [],
+    authJwt: str(fs?.session_jwt),
+    authJwtTtlSeconds:
+      typeof fs?.session_jwt_expires_in === "number" ? fs.session_jwt_expires_in : undefined,
   };
 }
 

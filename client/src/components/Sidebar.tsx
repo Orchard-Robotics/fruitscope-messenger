@@ -7,6 +7,7 @@ import { channelTitle, isGroupDm, isSelfDm } from "@/lib/channel";
 import { chat } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
+import { CanaryAvatar } from "./canary/CanaryAvatar";
 import { CreateChannelModal } from "./CreateChannelModal";
 import { NewDmModal } from "./NewDmModal";
 import { OrchardSwitcher } from "./OrchardSwitcher";
@@ -49,10 +50,13 @@ export function Sidebar({
     return map;
   }, [channels, me]);
 
+  // Canary (the AI bot) gets its own pinned row, so keep it out of the people list.
+  const canaryBot = useMemo(() => Object.values(users).find((u) => u.isBot), [users]);
+
   const people = useMemo(
     () =>
       Object.values(users)
-        .filter((u) => u.id !== me?.id)
+        .filter((u) => u.id !== me?.id && !u.isBot)
         .sort((a, b) => rankStatus(b) - rankStatus(a) || a.displayName.localeCompare(b.displayName)),
     [users, me],
   );
@@ -125,6 +129,16 @@ export function Sidebar({
         <section>
           <SectionHeader label="Direct messages" onAdd={() => setNewDm(true)} addTitle="New message" />
           <ul className="mt-1 space-y-0.5">
+            {/* Pinned Canary (AI assistant) row. */}
+            {canaryBot && (
+              <CanaryRow
+                active={(() => {
+                  const dm = dmByPartner.get(canaryBot.id);
+                  return !!dm && dm.id === activeChannelId;
+                })()}
+                onClick={() => void openDm(canaryBot.id)}
+              />
+            )}
             {/* Pinned "message yourself" row, Slack-style. */}
             <SelfDmRow
               me={me}
@@ -270,6 +284,27 @@ function PersonRow({
           {person.displayName}
         </span>
         {unread > 0 && <UnreadBadge count={unread} mentioned={mentioned} />}
+      </button>
+    </li>
+  );
+}
+
+// The pinned Canary (AI assistant) row — bird avatar + an "AI" tag.
+function CanaryRow({ active, onClick }: { active: boolean; onClick: () => void }) {
+  return (
+    <li>
+      <button
+        onClick={onClick}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition",
+          active ? "bg-brand-500/12 text-brand-700" : "text-ink-dim hover:bg-surface-2 hover:text-ink",
+        )}
+      >
+        <CanaryAvatar size={24} className="rounded-lg" />
+        <span className="truncate font-medium">Canary</span>
+        <span className="rounded bg-sun-500/15 px-1 text-[10px] font-bold uppercase tracking-wide text-sun-500">
+          AI
+        </span>
       </button>
     </li>
   );
