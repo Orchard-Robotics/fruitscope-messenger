@@ -1,4 +1,4 @@
-import { Eye, Loader2, Search, ShieldCheck, Users, X } from "lucide-react";
+import { Building2, Eye, Layers, Loader2, Search, ShieldCheck, Users, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -10,15 +10,20 @@ import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
 import { PresenceDot } from "./PresenceDot";
 
-type Filter = "all" | "admins";
+interface Workspace {
+  code: string;
+  name: string;
+  count: number;
+}
 
-/** Admin-only User Management: browse everyone and masquerade ("view as"). */
+/** Admin-only User Management: browse every workspace + user, search across both,
+ *  and masquerade ("view as") any non-admin user. */
 export function UserManagementModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const meId = useChatStore((s) => s.me?.id);
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [workspace, setWorkspace] = useState<string | null>(null); // orchard code, or null = all
   const [pending, setPending] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,7 +31,7 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
     setUsers(null);
     setError(null);
     setQuery("");
-    setFilter("all");
+    setWorkspace(null);
     rest
       .adminUsers()
       .then(setUsers)
@@ -36,11 +41,29 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Workspaces are derived from everyone's memberships (every orchard has members).
+  const workspaces = useMemo<Workspace[]>(() => {
+    const map = new Map<string, Workspace>();
+    for (const u of users ?? []) {
+      for (const o of u.orchards) {
+        const w = map.get(o.code) ?? { code: o.code, name: o.name, count: 0 };
+        w.count += 1;
+        map.set(o.code, w);
+      }
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [users]);
+
+  const q = query.trim().toLowerCase();
+  const wsMatches = useMemo(
+    () => (!q ? workspaces : workspaces.filter((w) => w.name.toLowerCase().includes(q) || w.code.toLowerCase().includes(q))),
+    [workspaces, q],
+  );
+
   const filtered = useMemo(() => {
     const list = users ?? [];
-    const q = query.trim().toLowerCase();
     return list.filter((u) => {
-      if (filter === "admins" && !u.isSuperAdmin) return false;
+      if (workspace && !u.orchards.some((o) => o.code === workspace)) return false;
       if (!q) return true;
       return (
         u.displayName.toLowerCase().includes(q) ||
@@ -49,11 +72,9 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
         u.orchards.some((o) => o.name.toLowerCase().includes(q) || o.code.toLowerCase().includes(q))
       );
     });
-  }, [users, query, filter]);
+  }, [users, q, workspace]);
 
   if (!open) return null;
-
-  const adminCount = (users ?? []).filter((u) => u.isSuperAdmin).length;
 
   const viewAs = async (id: string) => {
     setPending(id);
@@ -65,11 +86,13 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
     }
   };
 
+  const activeWs = workspace ? workspaces.find((w) => w.code === workspace) : null;
+
   return createPortal(
     <div className="anim-fade-in fixed inset-0 z-50 grid place-items-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="anim-card-in relative z-10 flex h-[40rem] max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-raised shadow-2xl shadow-ink/10">
-        {/* Header */}
+      <div className="anim-card-in relative z-10 flex h-[42rem] max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-line bg-raised shadow-2xl shadow-ink/10">
+        {/* Header + search */}
         <div className="shrink-0 border-b border-line p-4">
           <div className="flex items-center gap-2">
             <span className="grid size-8 place-items-center rounded-lg bg-brand-500/10 text-brand-600">
@@ -78,7 +101,9 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
             <div className="min-w-0 flex-1">
               <h2 className="font-display text-base font-bold text-ink">User management</h2>
               <p className="text-xs text-ink-dim">
-                {users ? `${users.length} ${users.length === 1 ? "user" : "users"} · ${adminCount} admin${adminCount === 1 ? "" : "s"}` : "Loading…"}
+                {users
+                  ? `${users.length} ${users.length === 1 ? "user" : "users"} across ${workspaces.length} ${workspaces.length === 1 ? "workspace" : "workspaces"}`
+                  : "Loading…"}
               </p>
             </div>
             <button
@@ -89,58 +114,92 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
               <X className="size-4" />
             </button>
           </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="flex min-w-[12rem] flex-1 items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5">
-              <Search className="size-4 shrink-0 text-ink-faint" />
-              <input
-                autoFocus
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search name, @username, email, orchard…"
-                className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
-              />
-            </div>
-            <div className="inline-flex rounded-lg border border-line bg-surface p-0.5">
-              {(["all", "admins"] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 text-xs font-semibold capitalize transition",
-                    filter === f ? "bg-raised text-brand-700 shadow-sm" : "text-ink-dim hover:text-ink",
-                  )}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5">
+            <Search className="size-4 shrink-0 text-ink-faint" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search across workspaces and users — name, @username, email, orchard…"
+              className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
+            />
           </div>
         </div>
 
-        {/* Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          {!users && !error && (
-            <p className="flex items-center gap-2 px-3 py-4 text-sm text-ink-faint">
-              <Loader2 className="size-4 animate-spin" /> Loading users…
+        {/* Two panes: workspaces + users */}
+        <div className="flex min-h-0 flex-1">
+          {/* Workspaces */}
+          <aside className="hidden w-56 shrink-0 flex-col overflow-y-auto border-r border-line bg-surface/60 p-2 sm:flex">
+            <p className="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
+              Workspaces
             </p>
-          )}
-          {error && <p className="px-3 py-4 text-sm text-danger">{error}</p>}
-          {users && filtered.length === 0 && (
-            <p className="px-3 py-4 text-sm text-ink-faint">No users match your search.</p>
-          )}
-          <ul className="space-y-1">
-            {filtered.map((u) => (
-              <UserRow
-                key={u.id}
-                user={u}
-                isSelf={u.id === meId}
-                pending={pending === u.id}
-                disabled={pending !== null}
-                onViewAs={() => void viewAs(u.id)}
-              />
+            <button
+              onClick={() => setWorkspace(null)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition",
+                workspace === null ? "bg-brand-500/12 text-brand-700" : "text-ink hover:bg-surface-2",
+              )}
+            >
+              <Layers className="size-4 shrink-0 text-ink-faint" />
+              <span className="flex-1 font-medium">All workspaces</span>
+              <span className="text-xs text-ink-faint">{users?.length ?? 0}</span>
+            </button>
+            {wsMatches.map((w) => (
+              <button
+                key={w.code}
+                onClick={() => setWorkspace(w.code)}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition",
+                  workspace === w.code ? "bg-brand-500/12" : "hover:bg-surface-2",
+                )}
+              >
+                <Building2 className="size-4 shrink-0 text-ink-faint" />
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate",
+                    workspace === w.code ? "font-medium text-brand-700" : "text-ink",
+                  )}
+                  title={w.code}
+                >
+                  {w.name}
+                </span>
+                <span className="text-xs text-ink-faint">{w.count}</span>
+              </button>
             ))}
-          </ul>
+            {q && wsMatches.length === 0 && (
+              <p className="px-2.5 py-1 text-xs text-ink-faint">No matching workspaces.</p>
+            )}
+          </aside>
+
+          {/* Users */}
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {activeWs && (
+              <p className="px-2 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
+                {activeWs.name}
+              </p>
+            )}
+            {!users && !error && (
+              <p className="flex items-center gap-2 px-3 py-4 text-sm text-ink-faint">
+                <Loader2 className="size-4 animate-spin" /> Loading users…
+              </p>
+            )}
+            {error && <p className="px-3 py-4 text-sm text-danger">{error}</p>}
+            {users && filtered.length === 0 && (
+              <p className="px-3 py-4 text-sm text-ink-faint">No users match your search.</p>
+            )}
+            <ul className="space-y-1">
+              {filtered.map((u) => (
+                <UserRow
+                  key={u.id}
+                  user={u}
+                  isSelf={u.id === meId}
+                  pending={pending === u.id}
+                  disabled={pending !== null}
+                  onViewAs={() => void viewAs(u.id)}
+                />
+              ))}
+            </ul>
+          </div>
         </div>
       </div>
     </div>,
@@ -161,6 +220,14 @@ function UserRow({
   disabled: boolean;
   onViewAs: () => void;
 }) {
+  // You can masquerade as anyone except yourself, bots, and other admins.
+  const blocked = isSelf || user.isSuperAdmin || user.isBot;
+  const reason = isSelf
+    ? "You can't masquerade as yourself"
+    : user.isSuperAdmin
+      ? "You can't masquerade as another admin"
+      : `View as ${user.displayName}`;
+
   return (
     <li className="flex items-center gap-3 rounded-xl border border-line bg-surface/50 px-3 py-2.5">
       <span className="relative shrink-0">
@@ -207,8 +274,8 @@ function UserRow({
 
       <button
         onClick={onViewAs}
-        disabled={isSelf || disabled}
-        title={isSelf ? "You can't masquerade as yourself" : `View as ${user.displayName}`}
+        disabled={blocked || disabled}
+        title={reason}
         className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-dim transition hover:bg-brand-500/10 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Eye className="size-3.5" />}

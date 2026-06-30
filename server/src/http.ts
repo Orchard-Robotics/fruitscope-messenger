@@ -315,6 +315,11 @@ api.post("/admin/masquerade", requireAuth, requireRealAdmin, async (req, res) =>
     res.status(404).json({ error: "User not found" });
     return;
   }
+  // You can't masquerade as another admin (no peeking at admin contexts).
+  if (await users.isSuperAdmin(targetId)) {
+    res.status(403).json({ error: "You can't masquerade as another admin" });
+    return;
+  }
   // Act in the target's own orchard (their first membership).
   const [targetOrchard] = await orchards.forUser(targetId);
   if (!targetOrchard) {
