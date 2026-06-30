@@ -11,10 +11,10 @@ import type {
 } from "@shared/index";
 import { REACTION_EMOJI } from "@shared/index";
 import { resolveToken } from "./auth";
-import { mentionsCanary, respondAsCanary } from "./canaryAgent";
+import { dispatchBotReplies } from "./botAgent";
 import { SESSION_COOKIE } from "./env";
 import { emitMessage, redactMessage, redactMessages } from "./messageEmit";
-import { CANARY, canAccess, channels, messages, orchards, reads, users } from "./store";
+import { canAccess, channels, messages, orchards, reads, users } from "./store";
 
 type InterServerEvents = Record<string, never>;
 
@@ -236,10 +236,8 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     stopTyping(io, channel.id, userId);
     ack({ ok: true, data: message });
 
-    // Canary: if a human @mentioned the bot, have it reply in the thread.
-    if (userId !== CANARY.id && mentionsCanary(message.content)) {
-      void respondAsCanary(io, channel.id, userId);
-    }
+    // Fire any bots that should reply (@mentioned, or the partner in a bot DM).
+    void dispatchBotReplies(io, channel, message, userId);
   });
 
   socket.on("message:react", async (payload, ack) => {

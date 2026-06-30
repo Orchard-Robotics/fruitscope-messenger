@@ -199,6 +199,12 @@ export const orchards = {
     });
     return mapOrchard(row);
   },
+
+  /** Find an orchard by its code (or undefined) — used to guard manual creates. */
+  byCode: async (code: string): Promise<Orchard | undefined> => {
+    const row = await prisma.orchard.findUnique({ where: { code } });
+    return row ? mapOrchard(row) : undefined;
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -457,6 +463,47 @@ export const canary = {
 
 /** Whether a user id is the Canary bot. */
 export const isCanary = (userId: ID): boolean => userId === CANARY.id;
+
+/* ------------------------------------------------------------------ */
+/* Generic LLM bots — admin-created, run under a chosen pi-ai model     */
+/* ------------------------------------------------------------------ */
+
+export const bots = {
+  /** Create an admin-configured LLM bot and add it to its workspace. */
+  create: async (input: {
+    displayName: string;
+    orchardId: ID;
+    model: string;
+    systemPrompt: string;
+  }): Promise<User> => {
+    const oidcSub = `bot:${nanoid(12)}`; // never collides with numeric OIDC subs
+    const displayName = input.displayName.trim() || "Bot";
+    const row = await prisma.user.create({
+      data: {
+        id: nanoid(10),
+        oidcSub,
+        username: await freeUsername(sanitizeHandle(displayName)),
+        displayName,
+        isBot: true,
+        status: "online",
+        hue: hashHue(oidcSub),
+        botModel: input.model,
+        botSystemPrompt: input.systemPrompt,
+      },
+    });
+    await orchards.ensureMembership(input.orchardId, row.id);
+    return mapUser(row);
+  },
+
+  /** A bot's runtime config (model + system prompt), or null if not an LLM bot. */
+  config: async (
+    botId: ID,
+  ): Promise<{ displayName: string; model: string; systemPrompt: string } | null> => {
+    const row = await prisma.user.findUnique({ where: { id: botId } });
+    if (!row || !row.isBot || !row.botModel) return null;
+    return { displayName: row.displayName, model: row.botModel, systemPrompt: row.botSystemPrompt ?? "" };
+  },
+};
 
 /* ------------------------------------------------------------------ */
 /* Channels — always scoped to an orchard                              */

@@ -5,6 +5,7 @@ import {
   Eye,
   Layers,
   Loader2,
+  Plus,
   Search,
   ShieldCheck,
   Users,
@@ -19,6 +20,7 @@ import { cn } from "@/lib/cn";
 import { startMasquerade } from "@/lib/masquerade";
 import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
+import { CreateView } from "./CreateView";
 import { PresenceDot } from "./PresenceDot";
 import { SyncFromFruitscope } from "./SyncFromFruitscope";
 
@@ -37,7 +39,7 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
   const [query, setQuery] = useState("");
   const [workspace, setWorkspace] = useState<string | null>(null); // orchard code, or null = all
   const [pending, setPending] = useState<string | null>(null);
-  const [view, setView] = useState<"directory" | "sync">("directory");
+  const [view, setView] = useState<"directory" | "sync" | "create">("directory");
 
   const refreshUsers = () => {
     void rest
@@ -114,7 +116,7 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
         {/* Header (+ search in directory view) */}
         <div className="shrink-0 border-b border-line p-4">
           <div className="flex items-center gap-2">
-            {view === "sync" ? (
+            {view !== "directory" ? (
               <button
                 onClick={() => setView("directory")}
                 className="grid size-8 place-items-center rounded-lg text-ink-dim transition hover:bg-surface-2 hover:text-ink"
@@ -129,24 +131,39 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
             )}
             <div className="min-w-0 flex-1">
               <h2 className="font-display text-base font-bold text-ink">
-                {view === "sync" ? "Sync from FruitScope" : "User management"}
+                {view === "sync"
+                  ? "Sync from FruitScope"
+                  : view === "create"
+                    ? "Create"
+                    : "User management"}
               </h2>
               <p className="text-xs text-ink-dim">
                 {view === "sync"
                   ? "Create a workspace and provision its users."
-                  : users
-                    ? `${users.length} ${users.length === 1 ? "user" : "users"} across ${workspaces.length} ${workspaces.length === 1 ? "workspace" : "workspaces"}`
-                    : "Loading…"}
+                  : view === "create"
+                    ? "Add a workspace or an LLM bot."
+                    : users
+                      ? `${users.length} ${users.length === 1 ? "user" : "users"} across ${workspaces.length} ${workspaces.length === 1 ? "workspace" : "workspaces"}`
+                      : "Loading…"}
               </p>
             </div>
             {view === "directory" && (
-              <button
-                onClick={() => setView("sync")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-dim transition hover:bg-brand-500/10 hover:text-brand-700"
-              >
-                <CloudDownload className="size-3.5" />
-                Sync from FruitScope
-              </button>
+              <>
+                <button
+                  onClick={() => setView("create")}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-dim transition hover:bg-brand-500/10 hover:text-brand-700"
+                >
+                  <Plus className="size-3.5" />
+                  Create
+                </button>
+                <button
+                  onClick={() => setView("sync")}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-dim transition hover:bg-brand-500/10 hover:text-brand-700"
+                >
+                  <CloudDownload className="size-3.5" />
+                  Sync from FruitScope
+                </button>
+              </>
             )}
             <button
               onClick={onClose}
@@ -170,9 +187,11 @@ export function UserManagementModal({ open, onClose }: { open: boolean; onClose:
           )}
         </div>
 
-        {/* Body: directory (two panes) or the FruitScope sync view */}
+        {/* Body: directory (two panes), the FruitScope sync view, or create */}
         {view === "sync" ? (
           <SyncFromFruitscope onSynced={refreshUsers} />
+        ) : view === "create" ? (
+          <CreateView onCreated={refreshUsers} />
         ) : (
         <div className="flex min-h-0 flex-1">
           {/* Workspaces */}

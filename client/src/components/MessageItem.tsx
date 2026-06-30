@@ -6,6 +6,7 @@ import { REACTION_EMOJI } from "@shared/index";
 import { cn } from "@/lib/cn";
 import { timeOfDay } from "@/lib/format";
 import { chat } from "@/lib/socket";
+import { CANARY_ID } from "@/lib/channel";
 import { Avatar } from "./Avatar";
 import { CanaryAvatar } from "./canary/CanaryAvatar";
 import { CanaryReasoning } from "./canary/CanaryReasoning";
@@ -41,7 +42,7 @@ export function MessageItem({ message, author, showHeader, meId, highlighted }: 
     >
       <div className="w-10 shrink-0">
         {showHeader ? (
-          author?.isBot ? (
+          author?.id === CANARY_ID ? (
             <CanaryAvatar size={40} className="rounded-xl" />
           ) : (
             <Avatar user={author ?? FALLBACK} size={40} />

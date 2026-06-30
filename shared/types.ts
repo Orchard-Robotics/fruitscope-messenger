@@ -181,6 +181,31 @@ export interface SyncUserResult {
   action: "created" | "updated" | "skipped";
 }
 
+/* ------------------------------------------------------------------ */
+/* LLM bots (admin) — create bots that run under a chosen model         */
+/* ------------------------------------------------------------------ */
+
+/** One selectable model: "provider/key" id + display label. */
+export interface LlmModelOption {
+  id: string;
+  label: string;
+}
+
+/** Models grouped under one provider, for an optgroup-style picker. */
+export interface LlmProviderGroup {
+  provider: string;
+  label: string;
+  /** Whether this provider has an API key configured (else its models can't run). */
+  authed: boolean;
+  models: LlmModelOption[];
+}
+
+/** Response of GET /admin/llm/models. */
+export interface ModelCatalog {
+  catalog: LlmProviderGroup[];
+  defaultModelId: string;
+}
+
 /** The result of syncing one orchard. */
 export interface SyncReport {
   orchardCode: string;

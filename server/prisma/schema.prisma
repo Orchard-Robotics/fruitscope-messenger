@@ -54,6 +54,13 @@ model User {
   // orchard. The client renders its DM as the embedded Canary chat panel rather
   // than a normal message thread, and never shows it a composer of its own.
   isBot       Boolean @default(false)
+  // Admin-created LLM bots: the pi-ai model id ("provider/key", e.g.
+  // "anthropic/claude-haiku-4-5") and the system prompt they run under. Set only
+  // for generic LLM bots; null for humans and for Canary (which uses the
+  // FruitScope-backed path, not a raw LLM). A bot with botModel set replies to
+  // @mentions in its workspace (and to every message in a 1:1 DM with it).
+  botModel        String?
+  botSystemPrompt String?
   // The FruitScope OIDC `session_jwt` claim: a short-lived (24h) bearer token
   // that lets the messenger act as this user against the FruitScope API (Canary).
   // Presented to api.fruitscope.com as the `auth_jwt` cookie. Re-minted on every

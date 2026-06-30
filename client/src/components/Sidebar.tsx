@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { Channel, ID, User } from "@shared/index";
 import { canaryApi } from "@/lib/canary";
 import { cn } from "@/lib/cn";
-import { channelTitle, isGroupDm, isSelfDm } from "@/lib/channel";
+import { CANARY_ID, channelTitle, isGroupDm, isSelfDm } from "@/lib/channel";
 import { chat } from "@/lib/socket";
 import { useCanaryUi } from "@/store/canary";
 import { useChatStore } from "@/store/store";
@@ -52,13 +52,14 @@ export function Sidebar({
     return map;
   }, [channels, me]);
 
-  // Canary (the AI bot) gets its own pinned row, so keep it out of the people list.
-  const canaryBot = useMemo(() => Object.values(users).find((u) => u.isBot), [users]);
+  // Canary (the built-in assistant) gets its own pinned row, so keep it out of the
+  // people list. Admin-created LLM bots are ordinary participants and stay in it.
+  const canaryBot = useMemo(() => users[CANARY_ID], [users]);
 
   const people = useMemo(
     () =>
       Object.values(users)
-        .filter((u) => u.id !== me?.id && !u.isBot)
+        .filter((u) => u.id !== me?.id && u.id !== CANARY_ID)
         .sort((a, b) => rankStatus(b) - rankStatus(a) || a.displayName.localeCompare(b.displayName)),
     [users, me],
   );

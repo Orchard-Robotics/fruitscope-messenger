@@ -2,6 +2,7 @@ import type {
   AdminUser,
   Bootstrap,
   Message,
+  ModelCatalog,
   Orchard,
   SyncOrchardOption,
   SyncPreview,
@@ -89,4 +90,28 @@ export const rest = {
       method: "POST",
       body: JSON.stringify({ orchardCode }),
     }),
+
+  /* ---- admin: create workspaces + LLM bots ---- */
+  /** Every workspace (for the bot-creation picker). */
+  adminWorkspaces: async (): Promise<Orchard[]> =>
+    (await request<{ workspaces: Orchard[] }>("/admin/workspaces")).workspaces,
+  /** Create a workspace; returns it. */
+  createWorkspace: async (code: string, name: string): Promise<Orchard> =>
+    (await request<{ workspace: Orchard }>("/admin/workspaces", {
+      method: "POST",
+      body: JSON.stringify({ code, name }),
+    })).workspace,
+  /** The catalog of every model a bot can run under (live). */
+  llmModels: () => request<ModelCatalog>("/admin/llm/models"),
+  /** Create an LLM bot; returns it. */
+  createBot: async (input: {
+    displayName: string;
+    orchardId: string;
+    model: string;
+    systemPrompt: string;
+  }): Promise<User> =>
+    (await request<{ bot: User }>("/admin/bots", {
+      method: "POST",
+      body: JSON.stringify(input),
+    })).bot,
 };

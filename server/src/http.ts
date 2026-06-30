@@ -28,8 +28,9 @@ import type { FruitscopeIdentity } from "./oidc";
 import { beginLogin, completeLogin, decodeTx, encodeTx } from "./oidc";
 import { broadcastUserUpdate } from "./socket";
 import { FruitscopeApiError } from "./fruitscope";
+import { DEFAULT_MODEL_ID, isKnownModelId, modelCatalog } from "./llm";
 import { redactMessages } from "./messageEmit";
-import { bootstrap, channels, messages, orchards, users } from "./store";
+import { bootstrap, bots, channels, messages, orchards, users } from "./store";
 import { listSyncOrchards, previewOrchard, syncOrchard } from "./sync";
 import { deleteObject, uploadObject } from "./storage";
 
@@ -413,6 +414,74 @@ api.post("/admin/sync/orchard", requireAuth, requireRealAdmin, async (req, res) 
   } catch (err) {
     sendSyncError(res, err);
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* Admin — create workspaces + LLM bots                                 */
+/* ------------------------------------------------------------------ */
+
+/** Every workspace (for the bot-creation picker). */
+api.get("/admin/workspaces", requireAuth, requireRealAdmin, async (_req, res) => {
+  res.json({ workspaces: await orchards.all() });
+});
+
+const createWorkspaceSchema = z.object({
+  code: z.string().trim().min(1).max(40),
+  name: z.string().trim().min(1).max(120),
+});
+
+/** Create a workspace (orchard). Fails if the code is already taken. */
+api.post("/admin/workspaces", requireAuth, requireRealAdmin, async (req, res) => {
+  const parsed = createWorkspaceSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "A code and a name are required." });
+    return;
+  }
+  const code = parsed.data.code.toUpperCase();
+  if (await orchards.byCode(code)) {
+    res.status(409).json({ error: `A workspace with code "${code}" already exists.` });
+    return;
+  }
+  const workspace = await orchards.upsertByCode(code, parsed.data.name);
+  res.json({ workspace });
+});
+
+/** The catalog of every model that can back a bot (live from pi-ai). */
+api.get("/admin/llm/models", requireAuth, requireRealAdmin, (_req, res) => {
+  res.json({ catalog: modelCatalog(), defaultModelId: DEFAULT_MODEL_ID });
+});
+
+const createBotSchema = z.object({
+  displayName: z.string().trim().min(1).max(80),
+  orchardId: z.string().min(1),
+  model: z.string().min(1),
+  systemPrompt: z.string().max(8000).optional(),
+});
+
+/** Create an LLM bot, run under the chosen model, placed in a workspace. */
+api.post("/admin/bots", requireAuth, requireRealAdmin, async (req, res) => {
+  const parsed = createBotSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "A name, workspace, and model are required." });
+    return;
+  }
+  if (!isKnownModelId(parsed.data.model)) {
+    res.status(400).json({ error: "That model isn't available." });
+    return;
+  }
+  const orchard = await orchards.byId(parsed.data.orchardId);
+  if (!orchard) {
+    res.status(404).json({ error: "That workspace doesn't exist." });
+    return;
+  }
+  const bot = await bots.create({
+    displayName: parsed.data.displayName,
+    orchardId: orchard.id,
+    model: parsed.data.model,
+    systemPrompt: parsed.data.systemPrompt ?? "",
+  });
+  await broadcastUserUpdate(bot); // surface the new bot to that workspace live
+  res.json({ bot });
 });
 
 /**

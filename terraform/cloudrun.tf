@@ -95,6 +95,38 @@ resource "google_cloud_run_v2_service" "verdant" {
         value = "https://media.${var.domain}"
       }
 
+      # LLM provider keys (admin-created bots). Same secrets as FarmAgent; pi-ai's
+      # google provider reads GEMINI_API_KEY, so the Google key is bound there.
+      env {
+        name = "ANTHROPIC_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.anthropic_api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "OPENAI_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.openai_api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "GEMINI_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.google_api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
       volume_mounts {
         name       = "cloudsql"
         mount_path = "/cloudsql"
@@ -114,6 +146,9 @@ resource "google_cloud_run_v2_service" "verdant" {
     google_secret_manager_secret_version.database_url,
     google_secret_manager_secret_iam_member.runtime_db_url,
     google_secret_manager_secret_iam_member.runtime_oidc_secret,
+    google_secret_manager_secret_iam_member.runtime_anthropic_key,
+    google_secret_manager_secret_iam_member.runtime_openai_key,
+    google_secret_manager_secret_iam_member.runtime_google_key,
     google_storage_bucket_iam_member.media_writer,
   ]
 }

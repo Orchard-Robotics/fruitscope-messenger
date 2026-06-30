@@ -1,5 +1,9 @@
 import type { Channel, ID, User } from "@shared/index";
 
+/** The built-in Canary assistant's fixed id. Only this bot gets the embedded
+ *  Canary panel; other (admin-created) bots are ordinary chat participants. */
+export const CANARY_ID = "canary";
+
 /** The "message yourself" DM — a DM whose only member is you. */
 export function isSelfDm(channel: Channel, meId: ID): boolean {
   return channel.kind === "dm" && channel.memberIds.every((id) => id === meId);
@@ -25,13 +29,13 @@ export function dmPartnerId(channel: Channel, meId: ID): ID | undefined {
 
 /** The Canary bot user in the directory, if present (a global, per-orchard bot). */
 export function canaryUser(users: Record<ID, User>): User | undefined {
-  return Object.values(users).find((u) => u.isBot);
+  return users[CANARY_ID];
 }
 
-/** Whether a channel is the 1:1 DM with the Canary assistant. */
-export function isCanaryDm(channel: Channel, users: Record<ID, User>, meId: ID): boolean {
-  const partnerId = dmPartnerId(channel, meId);
-  return partnerId !== undefined && users[partnerId]?.isBot === true;
+/** Whether a channel is the 1:1 DM with the Canary assistant (its embedded panel).
+ *  Generic LLM bots are NOT Canary — their DMs are ordinary message threads. */
+export function isCanaryDm(channel: Channel, _users: Record<ID, User>, meId: ID): boolean {
+  return dmPartnerId(channel, meId) === CANARY_ID;
 }
 
 /** Human title: channel name; for DMs the participants' names (or "… (you)"). */
