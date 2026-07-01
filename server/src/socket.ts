@@ -12,6 +12,7 @@ import type {
 import { REACTION_EMOJI } from "@shared/index";
 import { resolveToken } from "./auth";
 import { dispatchBotReplies } from "./botAgent";
+import { stopBots } from "./botControl";
 import { SESSION_COOKIE } from "./env";
 import { emitMessage, redactMessage, redactMessages } from "./messageEmit";
 import { canAccess, channels, messages, orchards, reads, users } from "./store";
@@ -494,6 +495,14 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
   socket.on("channel:read", (payload) => {
     const parsed = channelRef.safeParse(payload);
     if (parsed.success) void reads.set(userId, parsed.data.channelId, Date.now());
+  });
+
+  // Emergency brake: anyone in the room can stop bots talking to each other.
+  socket.on("bots:stop", async (payload) => {
+    const parsed = channelRef.safeParse(payload);
+    if (!parsed.success) return;
+    const channel = await channels.byId(parsed.data.channelId);
+    if (channel && canAccess(channel, userId, orchardId)) stopBots(io, channel.id);
   });
 
   socket.on("disconnect", () => void onDisconnect(io, socket, userId, orchardId));

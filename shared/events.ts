@@ -23,6 +23,10 @@ export interface ServerToClientEvents {
   "user:upserted": (user: User) => void;
   "presence:update": (payload: { userId: ID; status: UserStatus }) => void;
   "typing:update": (payload: { channelId: ID; userIds: ID[] }) => void;
+  // Bot-to-bot conversation state for a channel: `active` when bots are talking
+  // to each other (drives the "Stop bots" control), `paused` when they've been
+  // stopped (manually or by the auto circuit-breaker). A human message resumes.
+  "bots:state": (payload: { channelId: ID; active: boolean; paused: boolean }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -79,6 +83,9 @@ export interface ClientToServerEvents {
   "typing:start": (payload: { channelId: ID }) => void;
   "typing:stop": (payload: { channelId: ID }) => void;
   "channel:read": (payload: { channelId: ID }) => void;
+  // Emergency brake: stop bots talking to each other in a channel (anyone in the
+  // room may hit it). A subsequent human message resumes them.
+  "bots:stop": (payload: { channelId: ID }) => void;
 }
 
 /** Data attached to every authenticated socket (server-side bookkeeping). */

@@ -57,6 +57,8 @@ interface ChatState {
   /* ui */
   activeChannelId: ID | null;
   typing: Record<ID, ID[]>;
+  /** Per-channel bot-to-bot conversation state (drives the "Stop bots" control). */
+  botState: Record<ID, { active: boolean; paused: boolean }>;
   unread: Record<ID, number>;
   /** Channels with an unread message that @mentions me (Slack-style emphasis). */
   mentions: Record<ID, boolean>;
@@ -88,6 +90,7 @@ interface ChatState {
   requestJump: (channelId: ID, messageId: ID) => void;
   clearJump: () => void;
   setTyping: (channelId: ID, userIds: ID[]) => void;
+  setBotState: (channelId: ID, active: boolean, paused: boolean) => void;
 
   /* ui actions */
   setActiveChannel: (channelId: ID) => void;
@@ -129,6 +132,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   activeChannelId: null,
   typing: {},
+  botState: {},
   unread: {},
   mentions: {},
 
@@ -156,6 +160,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       jumpTarget: null,
       activeChannelId: null,
       typing: {},
+      botState: {},
       unread: {},
       mentions: {},
     }),
@@ -310,6 +315,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   clearJump: () => set({ jumpTarget: null }),
 
   setTyping: (channelId, userIds) => set((s) => ({ typing: { ...s.typing, [channelId]: userIds } })),
+
+  setBotState: (channelId, active, paused) =>
+    set((s) => ({ botState: { ...s.botState, [channelId]: { active, paused } } })),
 
   setActiveChannel: (channelId) => {
     const prev = get().activeChannelId;

@@ -1,6 +1,9 @@
 import type { Server } from "socket.io";
 
 import type { ClientToServerEvents, ID, ServerToClientEvents, SocketData } from "@shared/index";
+import { afterBotPost } from "./botAgent";
+import { botsPaused } from "./botControl";
+import { buildRoster, encodeMentions, mentionGuidance } from "./botRoom";
 import * as fs from "./fruitscope";
 import { emitMessage } from "./messageEmit";
 import { CANARY, channels, messages, orchards, users } from "./store";
@@ -64,6 +67,9 @@ export async function respondAsCanary(io: IO, channelId: ID, senderId: ID): Prom
 
     typing(true);
 
+    // Who's in the room — so Canary can address / @mention people and bots.
+    const roster = await buildRoster(channel.orchardId, CANARY.id);
+
     // Recent transcript (oldest→newest), with mentions rendered as @names.
     const page = await messages.page(channelId, { limit: 14 });
     const nameCache = new Map<ID, string>();
@@ -80,6 +86,8 @@ export async function respondAsCanary(io: IO, channelId: ID, senderId: ID): Prom
       "You are Canary, the FruitScope AI farm assistant, and you've been @mentioned in a team chat. " +
       "Continue the conversation: answer the latest message helpfully and concisely as a knowledgeable " +
       "farm / agronomy assistant, in a friendly chat tone. Don't repeat the question or add a greeting.\n\n" +
+      `People and bots in this workspace:\n${roster.text || "- (just you)"}\n\n` +
+      `${mentionGuidance()}\n\n` +
       `Recent conversation:\n${lines.join("\n")}\n\nYour reply:`;
 
     const ctx = await fs.prepareContext(jwt, orchardCode, { general_mode: false, canary_mode: 5 });
@@ -90,10 +98,16 @@ export async function respondAsCanary(io: IO, channelId: ID, senderId: ID): Prom
     });
 
     typing(false);
-    await post(
+    // Stopped while Canary was thinking? Drop the reply.
+    if (botsPaused(channelId)) return;
+
+    const text = encodeMentions(
       answer || "I’m not sure how to help with that yet — could you give me a bit more detail?",
-      reasoning,
+      roster.byUsername,
     );
+    const msg = await messages.create(channelId, CANARY.id, text, reasoning ?? null);
+    await emitMessage(io, channelId, "message:new", msg);
+    await afterBotPost(io, channel, msg);
   } catch (err) {
     console.warn("[canary-agent] failed:", err instanceof Error ? err.message : err);
     typing(false);

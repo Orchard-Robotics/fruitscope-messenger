@@ -9,6 +9,8 @@ import type {
   SocketData,
 } from "@shared/index";
 import { respondAsCanary } from "./canaryAgent";
+import { botsPaused, chainInitiator, recordBotTurn, resetBots } from "./botControl";
+import { buildRoster, encodeMentions, mentionGuidance } from "./botRoom";
 import { llmComplete } from "./llm";
 import { emitMessage } from "./messageEmit";
 import { bots, CANARY, channels, messages, users } from "./store";
@@ -41,10 +43,6 @@ export async function respondAsBot(io: IO, channelId: ID, botId: ID): Promise<vo
   const cfg = await bots.config(botId);
   if (!cfg) return; // not an LLM bot (or deleted)
 
-  const post = async (text: string): Promise<void> => {
-    const msg = await messages.create(channelId, botId, text);
-    await emitMessage(io, channelId, "message:new", msg);
-  };
   const typing = (on: boolean): void => {
     io.to(chanRoom(channelId)).emit("typing:update", { channelId, userIds: on ? [botId] : [] });
   };
@@ -60,6 +58,9 @@ export async function respondAsBot(io: IO, channelId: ID, botId: ID): Promise<vo
 
     typing(true);
 
+    // Who's in the room — so the bot can address / @mention people and bots.
+    const roster = await buildRoster(channel.orchardId, botId);
+
     // Recent transcript (oldest→newest), with mentions rendered as @names.
     const page = await messages.page(channelId, { limit: 14 });
     const nameCache = new Map<ID, string>();
@@ -73,25 +74,62 @@ export async function respondAsBot(io: IO, channelId: ID, botId: ID): Promise<vo
     }
 
     // The admin's system prompt stays authoritative as the system role; the chat
-    // context + transcript ride in the user turn so the bot continues the thread.
+    // context (roster + transcript + mention rules) rides in the user turn.
     const system = cfg.systemPrompt.trim() || `You are ${cfg.displayName}, a helpful assistant.`;
     const prompt =
       `You are "${cfg.displayName}", a bot participating in a team chat. ` +
       "Continue the conversation: reply to the latest message helpfully and concisely, staying in " +
       "character. Don't repeat the question or add a greeting.\n\n" +
+      `People and bots in this workspace:\n${roster.text || "- (just you)"}\n\n` +
+      `${mentionGuidance()}\n\n` +
       `Recent conversation:\n${lines.join("\n")}\n\nYour reply:`;
 
     const reply = await llmComplete({ modelId: cfg.model, system, prompt, maxTokens: 1024 });
-
     typing(false);
-    await post(reply || "I’m not sure how to help with that — could you give me a bit more detail?");
+
+    // Stopped (manually or by the circuit-breaker) while we were thinking? Drop it.
+    if (botsPaused(channelId)) return;
+
+    const text = encodeMentions(
+      reply || "I’m not sure how to help with that — could you give me a bit more detail?",
+      roster.byUsername,
+    );
+    const msg = await messages.create(channelId, botId, text);
+    await emitMessage(io, channelId, "message:new", msg);
+    await afterBotPost(io, channel, msg);
   } catch (err) {
     console.warn(`[bot-agent] ${botId} failed:`, err instanceof Error ? err.message : err);
     typing(false);
     try {
-      await post("⚠️ I hit an error trying to answer that one.");
+      const msg = await messages.create(channelId, botId, "⚠️ I hit an error trying to answer that one.");
+      await emitMessage(io, channelId, "message:new", msg);
     } catch {
       /* give up */
+    }
+  }
+}
+
+/**
+ * After ANY bot posts: record the turn (auto-pausing a too-long chain), then —
+ * unless bots are now paused — trigger every OTHER bot it @mentioned. This is the
+ * bot-to-bot mechanic: a bot reaches Canary or another bot only by @mentioning
+ * it. Canary is grounded with the chain initiator's token (bots have none).
+ */
+export async function afterBotPost(io: IO, channel: Channel, message: Message): Promise<void> {
+  const paused = recordBotTurn(io, channel.id);
+  if (paused) return;
+
+  const initiator = chainInitiator(channel.id);
+  const botIds = new Set<ID>();
+  for (const id of mentionedUserIds(message.content)) {
+    if (id === message.authorId) continue;
+    if ((await users.byId(id))?.isBot) botIds.add(id);
+  }
+  for (const botId of botIds) {
+    if (botId === CANARY.id) {
+      if (initiator) void respondAsCanary(io, channel.id, initiator);
+    } else {
+      void respondAsBot(io, channel.id, botId);
     }
   }
 }
@@ -109,6 +147,10 @@ export async function dispatchBotReplies(
   message: Message,
   senderId: ID,
 ): Promise<void> {
+  // A human posted: resume bots + reset the chain, and record this human as the
+  // initiator whose token grounds Canary during any bot-to-bot chain that follows.
+  resetBots(io, channel.id, senderId);
+
   const botIds = new Set<ID>();
 
   for (const id of mentionedUserIds(message.content)) {

@@ -48,6 +48,9 @@ export function connectSocket(): ChatSocket {
   socket.on("user:upserted", (u) => store().upsertUser(u));
   socket.on("presence:update", ({ userId, status }) => store().setPresence(userId, status));
   socket.on("typing:update", ({ channelId, userIds }) => store().setTyping(channelId, userIds));
+  socket.on("bots:state", ({ channelId, active, paused }) =>
+    store().setBotState(channelId, active, paused),
+  );
 
   return socket;
 }
@@ -111,6 +114,11 @@ export const chat = {
 
   edit: (messageId: ID, content: string): Promise<Result<Message>> =>
     withAck((cb) => getSocket().emit("message:edit", { messageId, content }, cb)),
+
+  /** Emergency brake: stop bots talking to each other in a channel. */
+  stopBots: (channelId: ID): void => {
+    getSocket().emit("bots:stop", { channelId });
+  },
 
   createChannel: (input: {
     name: string;

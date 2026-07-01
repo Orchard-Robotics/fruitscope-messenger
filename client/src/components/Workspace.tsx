@@ -3,6 +3,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 
 import { channelTitle, isCanaryDm, isSelfDm } from "@/lib/channel";
 import { lazyWithReload } from "@/lib/lazyRetry";
+import { BotActivityBanner } from "./BotActivityBanner";
 import { signOut } from "@/lib/session";
 import { useChatStore } from "@/store/store";
 import { ChannelHeader } from "./ChannelHeader";
@@ -100,6 +101,7 @@ export function Workspace() {
               <>
                 <ChannelHeader />
                 <MessageList key={`${activeChannelId}:${jumpToken}`} channelId={activeChannelId} />
+                <BotActivityBanner channelId={activeChannelId} />
                 <Composer channelId={activeChannelId} placeholder={placeholder} />
               </>
             )
