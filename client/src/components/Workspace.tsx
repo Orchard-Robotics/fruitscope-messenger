@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { channelTitle, isCanaryDm, isSelfDm } from "@/lib/channel";
 import { lazyWithReload } from "@/lib/lazyRetry";
 import { BotActivityBanner } from "./BotActivityBanner";
+import { ThreadsView } from "./ThreadsView";
 import { signOut } from "@/lib/session";
 import { useChatStore } from "@/store/store";
 import { ChannelHeader } from "./ChannelHeader";
@@ -26,6 +27,7 @@ import { TopBar } from "./TopBar";
 export function Workspace() {
   const me = useChatStore((s) => s.me);
   const activeChannelId = useChatStore((s) => s.activeChannelId);
+  const threadsOpen = useChatStore((s) => s.threadsOpen);
   const channel = useChatStore((s) => (activeChannelId ? s.channels[activeChannelId] : undefined));
   const users = useChatStore((s) => s.users);
   const meId = me?.id;
@@ -91,7 +93,9 @@ export function Workspace() {
 
         <main className="relative flex min-w-0 flex-1 flex-col">
           {!connected && <ConnectionBanner />}
-          {channel && activeChannelId ? (
+          {threadsOpen ? (
+            <ThreadsView />
+          ) : channel && activeChannelId ? (
             isCanary ? (
               // Canary's DM is the embedded FruitScope AI assistant, not a thread.
               <Suspense fallback={<PanelLoading />}>

@@ -56,6 +56,8 @@ interface ChatState {
 
   /* ui */
   activeChannelId: ID | null;
+  /** When true, the main pane shows the Threads (mentions) inbox instead of a channel. */
+  threadsOpen: boolean;
   typing: Record<ID, ID[]>;
   /** Per-channel bot-to-bot conversation state (drives the "Stop bots" control). */
   botState: Record<ID, { active: boolean; paused: boolean }>;
@@ -94,6 +96,7 @@ interface ChatState {
 
   /* ui actions */
   setActiveChannel: (channelId: ID) => void;
+  openThreads: () => void;
 }
 
 /** Max messages kept in memory per channel — bounds the store + DOM. */
@@ -131,6 +134,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   jumpTarget: null,
 
   activeChannelId: null,
+  threadsOpen: false,
   typing: {},
   botState: {},
   unread: {},
@@ -319,12 +323,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setBotState: (channelId, active, paused) =>
     set((s) => ({ botState: { ...s.botState, [channelId]: { active, paused } } })),
 
+  openThreads: () => set({ threadsOpen: true }),
+
   setActiveChannel: (channelId) => {
     const prev = get().activeChannelId;
     if (prev === channelId) return;
     set((s) => {
       const base = {
         activeChannelId: channelId,
+        threadsOpen: false,
         unread: { ...s.unread, [channelId]: 0 },
         mentions: { ...s.mentions, [channelId]: false },
         // A normal channel switch isn't a jump — drop any pending jump.

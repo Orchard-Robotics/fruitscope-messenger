@@ -1,4 +1,4 @@
-import { ChevronRight, Hash, Lock, MessageSquare, Plus, Trash2, Users } from "lucide-react";
+import { AtSign, ChevronRight, Hash, Lock, MessageSquare, Plus, Trash2, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { Channel, ID, User } from "@shared/index";
@@ -28,6 +28,8 @@ export function Sidebar({
   const unread = useChatStore((s) => s.unread);
   const mentions = useChatStore((s) => s.mentions);
   const activeChannelId = useChatStore((s) => s.activeChannelId);
+  const threadsOpen = useChatStore((s) => s.threadsOpen);
+  const mentionCount = useMemo(() => Object.values(mentions).filter(Boolean).length, [mentions]);
   const setActiveChannel = useChatStore((s) => s.setActiveChannel);
 
   const [creating, setCreating] = useState(false);
@@ -115,6 +117,26 @@ export function Sidebar({
       </header>
 
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-3">
+        {/* Threads — where you've been @mentioned (Slack-style). */}
+        <button
+          onClick={() => {
+            useChatStore.getState().openThreads();
+            onNavigate?.();
+          }}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium transition",
+            threadsOpen ? "bg-brand-500/12 text-brand-700" : "text-ink-dim hover:bg-surface-2 hover:text-ink",
+          )}
+        >
+          <AtSign className="size-4 shrink-0" />
+          <span className="flex-1 text-left">Threads</span>
+          {mentionCount > 0 && (
+            <span className="grid min-w-5 place-items-center rounded-full bg-brand-500 px-1.5 text-[11px] font-bold text-white">
+              {mentionCount}
+            </span>
+          )}
+        </button>
+
         <section>
           <SectionHeader label="Channels" onAdd={() => setCreating(true)} addTitle="Create channel" />
           <ul className="mt-1 space-y-0.5">

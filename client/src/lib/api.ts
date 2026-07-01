@@ -41,6 +41,8 @@ export const rest = {
   /** Server-side message search across the orchard's accessible channels. */
   search: (q: string) =>
     request<{ messages: Message[] }>(`/search?q=${encodeURIComponent(q)}`),
+  /** Your Threads inbox: recent messages that @mention you across the workspace. */
+  mentions: () => request<{ mentions: Message[] }>("/mentions"),
   /** Upload a new profile picture (multipart); returns the updated user. */
   uploadAvatar: async (file: File): Promise<User> => {
     const form = new FormData();
