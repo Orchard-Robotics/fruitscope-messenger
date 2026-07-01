@@ -78,6 +78,12 @@ export const canaryCodeIntegrations = {
   posthogKey: secretOr(process.env.POSTHOG_API_KEY),
   posthogHost: (process.env.POSTHOG_HOST ?? "https://us.posthog.com").replace(/\/+$/, ""),
   posthogProjectId: process.env.POSTHOG_PROJECT_ID ?? "",
+  // Shared FruitScope DB (read-only) for db_query_readonly. Reached via the Cloud
+  // SQL socket by instance connection name; the DB role must be SELECT-only.
+  fsDbInstance: process.env.FRUITSCOPE_DB_INSTANCE ?? "",
+  fsDbUser: process.env.FRUITSCOPE_DB_USER ?? "readonly",
+  fsDbPassword: secretOr(process.env.FRUITSCOPE_DB_PASSWORD),
+  fsDbDefaultDb: process.env.FRUITSCOPE_DB_DEFAULT ?? "postgres",
 };
 
 /** Opaque session token delivered as an httpOnly cookie after OIDC login. */

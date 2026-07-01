@@ -18,6 +18,7 @@ import { tool } from "ai";
 import { z } from "zod";
 
 import { canaryCodeIntegrations as cfg } from "./env";
+import { fruitscopeDbConfigured, runReadOnlyQuery } from "./fruitscopeDb";
 import { getGithubInstallationToken, githubConfigured } from "./githubApp";
 import { posthogConfigured, posthogQuery, type PosthogQueryResult } from "./posthog";
 
@@ -445,6 +446,43 @@ const errors_recent = tool({
 });
 
 /* ------------------------------------------------------------------ */
+/* FruitScope database (read-only)                                     */
+/* ------------------------------------------------------------------ */
+
+const db_query_readonly = tool({
+  description:
+    "Run a read-only SQL query against the shared FruitScope production database (read-only). " +
+    "Databases are per-orchard (e.g. 'meta', 'SEA', 'AVM', 'WAS'; 'BETA-<code>' for beta) — pass " +
+    "the one you want. Only a single SELECT/WITH/EXPLAIN statement is allowed; writes are rejected " +
+    "and the session is forced read-only. Use for questions about orchards, scans, blocks, trees, etc.",
+  inputSchema: z.object({
+    sql: z
+      .string()
+      .min(1)
+      .describe("A single read-only SQL query (SELECT/WITH/EXPLAIN). No writes, no ';'-chaining."),
+    database: z
+      .string()
+      .optional()
+      .describe("Target database (orchard code, e.g. 'AVM'). Defaults to 'postgres'."),
+    limit: z.number().int().min(1).max(1000).optional().describe("Max rows to return (default 100)."),
+  }),
+  execute: async ({ sql, database, limit }) => {
+    if (!fruitscopeDbConfigured()) {
+      return {
+        error:
+          "FruitScope DB integration is not configured yet (no read-only credentials). Ask an admin " +
+          "to add the read-only DB password to the canarycode-fruitscope-db-password secret.",
+      };
+    }
+    try {
+      return await runReadOnlyQuery(sql, database ?? "", limit ?? 100);
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "Query failed" };
+    }
+  },
+});
+
+/* ------------------------------------------------------------------ */
 
 /** The read-only tool set handed to CanaryCode's Opus agent. */
 export const canaryCodeTools = {
@@ -453,4 +491,5 @@ export const canaryCodeTools = {
   github_pr_summary,
   linear_search,
   errors_recent,
+  db_query_readonly,
 };

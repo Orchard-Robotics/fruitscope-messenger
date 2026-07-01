@@ -192,6 +192,33 @@ resource "google_cloud_run_v2_service" "verdant" {
         }
       }
 
+      # Shared FruitScope DB (read-only). Reached over the Cloud SQL socket mounted
+      # below; connection name / user / default db are not secret, the password is.
+      env {
+        name  = "FRUITSCOPE_DB_INSTANCE"
+        value = var.fruitscope_db_instance
+      }
+
+      env {
+        name  = "FRUITSCOPE_DB_USER"
+        value = var.fruitscope_db_user
+      }
+
+      env {
+        name  = "FRUITSCOPE_DB_DEFAULT"
+        value = var.fruitscope_db_default
+      }
+
+      env {
+        name = "FRUITSCOPE_DB_PASSWORD"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.canarycode_fruitscope_db_password.secret_id
+            version = "latest"
+          }
+        }
+      }
+
       volume_mounts {
         name       = "cloudsql"
         mount_path = "/cloudsql"
@@ -201,7 +228,12 @@ resource "google_cloud_run_v2_service" "verdant" {
     volumes {
       name = "cloudsql"
       cloud_sql_instance {
-        instances = [google_sql_database_instance.verdant.connection_name]
+        # The app's own DB (verdant) + the shared FruitScope DB (read-only, for
+        # CanaryCode's db_query_readonly). Both reached via the mounted socket.
+        instances = [
+          google_sql_database_instance.verdant.connection_name,
+          var.fruitscope_db_instance,
+        ]
       }
     }
   }
@@ -218,10 +250,12 @@ resource "google_cloud_run_v2_service" "verdant" {
     google_secret_manager_secret_version.canarycode_github_token,
     google_secret_manager_secret_version.canarycode_linear_key,
     google_secret_manager_secret_version.canarycode_posthog_key,
+    google_secret_manager_secret_version.canarycode_fruitscope_db_password,
     google_secret_manager_secret_iam_member.runtime_canarycode_github_app_key,
     google_secret_manager_secret_iam_member.runtime_canarycode_github_token,
     google_secret_manager_secret_iam_member.runtime_canarycode_linear_key,
     google_secret_manager_secret_iam_member.runtime_canarycode_posthog_key,
+    google_secret_manager_secret_iam_member.runtime_canarycode_fruitscope_db_password,
     google_storage_bucket_iam_member.media_writer,
   ]
 }

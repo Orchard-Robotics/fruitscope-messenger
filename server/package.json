@@ -19,6 +19,7 @@
     "@earendil-works/pi-ai": "^0.79.4",
     "@google-cloud/storage": "^7.21.0",
     "@prisma/client": "^6.2.1",
+    "@types/pg": "^8.20.0",
     "ai": "^6.0.216",
     "compression": "^1.7.5",
     "cookie": "^0.7.2",
@@ -28,6 +29,7 @@
     "multer": "^2.2.0",
     "nanoid": "^5.0.9",
     "openid-client": "^6.8.4",
+    "pg": "^8.22.0",
     "sharp": "^0.35.2",
     "socket.io": "^4.8.1",
     "zod": "^3.24.1"

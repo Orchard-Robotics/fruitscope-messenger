@@ -51,6 +51,24 @@ variable "posthog_project_id" {
   description = "Optional PostHog project id; auto-discovered from the key when blank."
 }
 
+variable "fruitscope_db_instance" {
+  type        = string
+  default     = "braided-visitor-372321:us-central1:fruitscopesandbox"
+  description = "Cloud SQL connection name of the shared FruitScope DB (reached via socket)."
+}
+
+variable "fruitscope_db_user" {
+  type        = string
+  default     = "readonly"
+  description = "Read-only (SELECT-only) DB role CanaryCode connects as."
+}
+
+variable "fruitscope_db_default" {
+  type        = string
+  default     = "postgres"
+  description = "Default database when the tool isn't given one."
+}
+
 # --- Org-owned GitHub App: private key (PEM) ---
 
 resource "google_secret_manager_secret" "canarycode_github_app_key" {
@@ -156,6 +174,33 @@ resource "google_secret_manager_secret_version" "canarycode_posthog_key" {
 
 resource "google_secret_manager_secret_iam_member" "runtime_canarycode_posthog_key" {
   secret_id = google_secret_manager_secret.canarycode_posthog_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+
+# --- Shared FruitScope DB: read-only role password ---
+
+resource "google_secret_manager_secret" "canarycode_fruitscope_db_password" {
+  secret_id = "canarycode-fruitscope-db-password"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.services]
+}
+
+resource "google_secret_manager_secret_version" "canarycode_fruitscope_db_password" {
+  secret      = google_secret_manager_secret.canarycode_fruitscope_db_password.id
+  secret_data = "unset"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "runtime_canarycode_fruitscope_db_password" {
+  secret_id = google_secret_manager_secret.canarycode_fruitscope_db_password.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.runtime.email}"
 }
