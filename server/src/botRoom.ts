@@ -2,14 +2,11 @@ import type { ID, User } from "@shared/index";
 
 import { orchards } from "./store";
 
-/** A typed `@handle` at a boundary (so an email like foo@bar isn't a mention). */
-const TYPED_MENTION_RE = /(^|[^A-Za-z0-9_.-])@([A-Za-z0-9_.-]+)/g;
-
 export interface Roster {
   /** A human-readable list of participants for the bot's prompt. */
   text: string;
-  /** Lowercased username → user, for encoding the bot's @mentions. */
-  byUsername: Map<string, User>;
+  /** The room's members (minus the responding bot) — used to encode @mentions. */
+  members: User[];
 }
 
 /**
@@ -18,45 +15,102 @@ export interface Roster {
  * responding bot itself.
  */
 export async function buildRoster(orchardId: ID, excludeId?: ID): Promise<Roster> {
-  const members = await orchards.members(orchardId);
-  const byUsername = new Map<string, User>();
-  const lines: string[] = [];
-  for (const m of members) {
-    if (m.id === excludeId) continue;
-    byUsername.set(m.username.toLowerCase(), m);
+  const members = (await orchards.members(orchardId)).filter((m) => m.id !== excludeId);
+  const lines = members.map((m) => {
     const kind = m.isCanary
       ? "the FruitScope AI assistant (a bot)"
       : m.isBot
         ? "a bot"
         : "a person";
-    lines.push(`- @${m.username} — ${m.displayName} (${kind})`);
-  }
-  return { text: lines.join("\n"), byUsername };
+    return `- ${m.displayName} — @${m.username} (${kind})`;
+  });
+  return { text: lines.join("\n"), members };
+}
+
+interface Candidate {
+  needle: string; // lowercased handle or display name
+  id: string;
 }
 
 /**
- * Encode a bot's typed `@username` mentions into `<@id>` tokens against the
- * roster, so they render as pills and can notify/trigger the mentioned member.
- * Resolves the longest matching username so trailing punctuation is preserved;
- * unknown handles are left as literal text.
+ * Build the set of mention needles for a roster. Usernames (always unique) map
+ * directly; display names — and display names with spaces removed — are added
+ * too, but only when unambiguous (a name shared by two people, or already a
+ * username, is skipped so we never tag the wrong person). Longest needles first
+ * so "@Brian Yeh" beats "@Brian".
  */
-export function encodeMentions(text: string, byUsername: Map<string, User>): string {
-  return text.replace(TYPED_MENTION_RE, (full: string, pre: string, handle: string) => {
-    let name = handle.toLowerCase();
-    while (name.length > 0 && !byUsername.has(name)) name = name.slice(0, -1);
-    const user = name ? byUsername.get(name) : undefined;
-    if (!user) return full;
-    return `${pre}<@${user.id}>${handle.slice(name.length)}`;
-  });
+function buildCandidates(members: User[]): Candidate[] {
+  const usernames = new Map<string, string>();
+  for (const m of members) {
+    const u = m.username.trim().toLowerCase();
+    if (u.length >= 2) usernames.set(u, m.id);
+  }
+  const names = new Map<string, Set<string>>();
+  const addName = (raw: string, id: string): void => {
+    const n = raw.trim().toLowerCase();
+    if (n.length < 2 || usernames.has(n)) return;
+    const set = names.get(n) ?? new Set<string>();
+    set.add(id);
+    names.set(n, set);
+  };
+  for (const m of members) {
+    addName(m.displayName, m.id);
+    addName(m.displayName.replace(/\s+/g, ""), m.id);
+  }
+
+  const list: Candidate[] = [];
+  for (const [needle, id] of usernames) list.push({ needle, id });
+  for (const [needle, ids] of names) {
+    if (ids.size === 1) list.push({ needle, id: [...ids][0] as string });
+  }
+  return list.sort((a, b) => b.needle.length - a.needle.length);
+}
+
+const isWordChar = (c: string | undefined): boolean => !!c && /[A-Za-z0-9_.-]/.test(c);
+const isAlnum = (c: string | undefined): boolean => !!c && /[A-Za-z0-9]/.test(c);
+
+/**
+ * Encode a bot's typed `@mention` — whether it used the @handle (`@brianyeh`) or
+ * the person's display name (`@Brian Yeh`) — into a canonical `<@id>` token, so
+ * it renders as a pill and actually notifies / triggers the mentioned member.
+ * The `@` must sit at a word boundary (so an email like `a@b.com` is never a
+ * mention), and the match must end at a non-alphanumeric boundary (so `@Brian`
+ * doesn't fire inside `@Brianna`). Trailing punctuation is preserved.
+ */
+export function encodeMentions(text: string, members: User[]): string {
+  if (members.length === 0) return text;
+  const candidates = buildCandidates(members);
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i] as string;
+    if (c === "@" && !isWordChar(text[i - 1])) {
+      const rest = text.slice(i + 1);
+      const restLower = rest.toLowerCase();
+      const hit = candidates.find(
+        (cand) => restLower.startsWith(cand.needle) && !isAlnum(rest[cand.needle.length]),
+      );
+      if (hit) {
+        out += `<@${hit.id}>`;
+        i += 1 + hit.needle.length;
+        continue;
+      }
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
 }
 
 /** The mention-guidance appended to a bot's prompt. */
 export function mentionGuidance(): string {
   return (
-    "To address anyone in this channel — a person OR a bot — you MUST @mention them by their " +
-    "@username, and you must do this EVERY time you want them to see or respond to your message " +
-    "(a message with no @mention reaches no one in particular). When another bot replies to you, " +
-    "@mention that bot again to CONTINUE the conversation with it; if you do NOT @mention it, that " +
-    "means you want the conversation to end. Only @mention a bot when you genuinely want its input."
+    "To reach or notify anyone in this channel — a person OR a bot — you MUST tag them with an " +
+    "@mention, EVERY time you want them to see or respond (a message with no @mention notifies no " +
+    "one in particular). Tag them by their exact @handle from the roster above (e.g. @brianyeh); " +
+    "their display name works too (e.g. @Brian Yeh), but the @ is required — plain text like " +
+    '"Brian" does NOT notify anyone. When another bot replies to you, @mention that bot again to ' +
+    "CONTINUE the conversation with it; if you do NOT @mention it, that means you want the " +
+    "conversation to end. Only @mention a bot when you genuinely want its input."
   );
 }

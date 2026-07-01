@@ -107,7 +107,7 @@ export async function respondAsCanary(io: IO, channelId: ID, senderId: ID): Prom
 
     const text = encodeMentions(
       answer || "I’m not sure how to help with that yet — could you give me a bit more detail?",
-      roster.byUsername,
+      roster.members,
     );
     const msg = await messages.create(channelId, CANARY.id, text, reasoning ?? null);
     await emitMessage(io, channelId, "message:new", msg);

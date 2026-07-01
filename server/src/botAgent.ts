@@ -92,7 +92,7 @@ export async function respondAsBot(io: IO, channelId: ID, botId: ID): Promise<vo
 
     const text = encodeMentions(
       reply || "I’m not sure how to help with that — could you give me a bit more detail?",
-      roster.byUsername,
+      roster.members,
     );
     const msg = await messages.create(channelId, botId, text);
     await emitMessage(io, channelId, "message:new", msg);
