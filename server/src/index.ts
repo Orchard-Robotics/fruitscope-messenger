@@ -17,7 +17,7 @@ import { api } from "./http";
 import { prisma } from "./prisma";
 import { attachSockets } from "./socket";
 import { ensureMediaBucket } from "./storage";
-import { canary } from "./store";
+import { canary, canaryCode } from "./store";
 
 if (isProd && !oidcConfigured) {
   console.warn(
@@ -29,6 +29,7 @@ if (isProd && !oidcConfigured) {
 // orchard lazily on bootstrap, so it shows up everywhere without a backfill.
 try {
   await canary.ensureUser();
+  await canaryCode.ensureUser();
 } catch (err) {
   console.warn("⚠️  Could not ensure the Canary bot user:", err);
 }

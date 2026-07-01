@@ -19,6 +19,7 @@ import type {
   User,
   UserStatus,
 } from "@shared/index";
+import { superAdminOrchard } from "./env";
 import { modelLabel } from "./llm";
 import type { FruitscopeIdentity } from "./oidc";
 import { prisma } from "./prisma";
@@ -34,10 +35,12 @@ type DbMessage = Prisma.MessageGetPayload<{ include: { reactions: true } }>;
 const channelInclude = { members: true } satisfies Prisma.ChannelInclude;
 const messageInclude = { reactions: true } satisfies Prisma.MessageInclude;
 
-// The built-in Canary bot's stable identity — by id OR its fixed oidcSub, so a
-// legacy row with a different id is still recognized as Canary.
+// The built-in bots' stable identities — matched by id OR fixed oidcSub, so a
+// legacy row with a different id is still recognized.
 const CANARY_ID = "canary";
 const CANARY_OIDC_SUB = "fruitscope:canary-bot";
+const CANARYCODE_ID = "canarycode";
+const CANARYCODE_OIDC_SUB = "fruitscope:canarycode-bot";
 
 function mapUser(row: DbUser): User {
   return {
@@ -46,6 +49,7 @@ function mapUser(row: DbUser): User {
     displayName: row.displayName,
     isBot: row.isBot,
     isCanary: row.id === CANARY_ID || row.oidcSub === CANARY_OIDC_SUB,
+    isCanaryCode: row.id === CANARYCODE_ID || row.oidcSub === CANARYCODE_OIDC_SUB,
     hue: row.hue,
     // Build the public CDN/emulator URL from the stored key at read time.
     avatarUrl: row.avatarKey ? publicUrl(row.avatarKey) : null,
@@ -244,6 +248,14 @@ export const users = {
 
   isSuperAdmin: async (id: ID): Promise<boolean> =>
     (await prisma.user.findUnique({ where: { id } }))?.isSuperAdmin ?? false,
+
+  /** Orchard Robotics staff — super admins or an @orchard-robotics.com email.
+   *  Gates access to CanaryCode (the OR-only dev assistant). */
+  isStaff: async (id: ID): Promise<boolean> => {
+    const row = await prisma.user.findUnique({ where: { id } });
+    if (!row) return false;
+    return row.isSuperAdmin || (row.email ?? "").trim().toLowerCase().endsWith("@orchard-robotics.com");
+  },
 
   /** Map several users by id — for resolving message authors in the admin monitor. */
   byIds: async (ids: ID[]): Promise<User[]> => {
@@ -495,6 +507,46 @@ export const canary = {
 
 /** Whether a user id is the Canary bot. */
 export const isCanary = (userId: ID): boolean => userId === CANARY.id;
+
+/* ------------------------------------------------------------------ */
+/* CanaryCode — the Orchard-Robotics-only dev assistant (runs on Opus)  */
+/* ------------------------------------------------------------------ */
+
+/** The CanaryCode bot's stable identity — present ONLY in the OR workspace. */
+export const CANARYCODE = {
+  id: "canarycode",
+  oidcSub: "fruitscope:canarycode-bot",
+  username: "canarycode",
+  displayName: "CanaryCode",
+  /** A cool developer-blue hue for the avatar fallback. */
+  hue: 210,
+} as const;
+
+export const canaryCode = {
+  ensureUser: async (): Promise<User> => {
+    const row = await prisma.user.upsert({
+      where: { id: CANARYCODE.id },
+      create: {
+        id: CANARYCODE.id,
+        oidcSub: CANARYCODE.oidcSub,
+        username: CANARYCODE.username,
+        displayName: CANARYCODE.displayName,
+        isBot: true,
+        status: "online",
+        hue: CANARYCODE.hue,
+      },
+      update: { isBot: true, displayName: CANARYCODE.displayName, status: "online" },
+    });
+    return mapUser(row);
+  },
+
+  /** Ensure CanaryCode is a member of an orchard — only ever called for the OR
+   *  workspace, so it stays Orchard-Robotics-only. */
+  ensureMembership: async (orchardId: ID): Promise<void> => {
+    await canaryCode.ensureUser();
+    await orchards.ensureMembership(orchardId, CANARYCODE.id);
+  },
+};
 
 /* ------------------------------------------------------------------ */
 /* Generic LLM bots — admin-created, run under a chosen pi-ai model     */
@@ -956,6 +1008,9 @@ export async function bootstrap(userId: ID, orchardId: ID): Promise<Bootstrap> {
   ]);
   if (!meRow) throw new Error(`Unknown user ${userId}`);
   if (!orchard) throw new Error(`Unknown orchard ${orchardId}`);
+
+  // CanaryCode lives ONLY in the Orchard Robotics workspace — ensure it there.
+  if (orchard.code === superAdminOrchard.code) await canaryCode.ensureMembership(orchardId);
 
   // No messages here — the client loads each channel's first page lazily on open
   // (and older pages on scroll), so connect stays O(1) in channel count.

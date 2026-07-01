@@ -1,3 +1,5 @@
+import { anthropic } from "@ai-sdk/anthropic";
+import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { Router } from "express";
 import multer from "multer";
 import sharp from "sharp";
@@ -556,6 +558,49 @@ api.get("/admin/conversations/:id/messages", requireAuth, requireRealAdmin, asyn
   // user store won't have them all.
   const authors = await users.byIds([...new Set(page.messages.map((m) => m.authorId))]);
   res.json({ channel, messages: page.messages, authors, hasMore: page.hasMore });
+});
+
+/* ------------------------------------------------------------------ */
+/* CanaryCode — Orchard-Robotics-only dev assistant (Claude Opus)       */
+/* ------------------------------------------------------------------ */
+
+const CANARYCODE_SYSTEM = [
+  "You are CanaryCode, a senior software engineer and pair-programmer for the Orchard",
+  "Robotics / FruitScope team. FruitScope is an agricultural-robotics platform: a",
+  "Python/Flask backend + Celery workers on GKE (GitOps via ArgoCD), PostgreSQL on",
+  "Cloud SQL, a React/TypeScript frontend, and this messenger app (Node/Express +",
+  "React + Prisma on Cloud Run). Help developers debug issues, understand the",
+  "codebase, write and review code, and reason about the infrastructure. Be precise,",
+  "concise, and practical; put code in fenced markdown blocks. You don't yet have",
+  "live tools into production — read-only tool calls (logs, deploys, data, code",
+  "search) are coming soon; when a question needs live data you don't have, say so.",
+].join(" ");
+
+/** Stream an Opus chat turn for CanaryCode (Orchard Robotics staff only). Uses
+ *  the Vercel AI SDK so the reply speaks the same protocol the client's useChat
+ *  panel already renders. */
+api.post("/canarycode/chat", requireAuth, async (req, res) => {
+  const scope = (req as AuthedRequest).scope;
+  if (!(await users.isStaff(scope.realUserId))) {
+    res.status(403).json({ error: "CanaryCode is available to Orchard Robotics staff only." });
+    return;
+  }
+  const messages = (req.body as { messages?: UIMessage[] } | undefined)?.messages;
+  if (!Array.isArray(messages)) {
+    res.status(400).json({ error: "Invalid request" });
+    return;
+  }
+  try {
+    const result = streamText({
+      model: anthropic("claude-opus-4-8"),
+      system: CANARYCODE_SYSTEM,
+      messages: await convertToModelMessages(messages),
+    });
+    result.pipeUIMessageStreamToResponse(res);
+  } catch (err) {
+    console.error("[canarycode] failed:", err);
+    if (!res.headersSent) res.status(500).json({ error: "CanaryCode is unavailable right now." });
+  }
 });
 
 /** Your Threads inbox: recent messages that @mention you across the workspace. */

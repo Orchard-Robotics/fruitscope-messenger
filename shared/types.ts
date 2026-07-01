@@ -23,6 +23,9 @@ export interface User {
    * identity), so it never depends on the client guessing which bot is Canary.
    */
   isCanary: boolean;
+  /** True ONLY for CanaryCode — the Orchard-Robotics-only developer assistant
+   *  (runs on Opus). Its DM renders the CanaryCode panel. */
+  isCanaryCode: boolean;
   /** A stable HSL hue (0–360) used to render the avatar gradient fallback. */
   hue: number;
   /**

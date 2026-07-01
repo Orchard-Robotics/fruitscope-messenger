@@ -15,9 +15,11 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.91",
     "@earendil-works/pi-ai": "^0.79.4",
     "@google-cloud/storage": "^7.21.0",
     "@prisma/client": "^6.2.1",
+    "ai": "^6.0.216",
     "compression": "^1.7.5",
     "cookie": "^0.7.2",
     "cookie-parser": "^1.4.7",

@@ -1,7 +1,7 @@
 import { Loader2, MessageSquareHeart, WifiOff } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 
-import { channelTitle, isCanaryDm, isSelfDm } from "@/lib/channel";
+import { channelTitle, isCanaryCodeDm, isCanaryDm, isSelfDm } from "@/lib/channel";
 import { lazyWithReload } from "@/lib/lazyRetry";
 import { BotActivityBanner } from "./BotActivityBanner";
 import { ThreadsView } from "./ThreadsView";
@@ -17,6 +17,9 @@ import { AdminConsole } from "./admin/AdminConsole";
 // shouldn't weigh down the initial chat bundle. It loads when first opened.
 const CanaryPanel = lazyWithReload(() =>
   import("./canary/CanaryPanel").then((m) => ({ default: m.CanaryPanel })),
+);
+const CanaryCodePanel = lazyWithReload(() =>
+  import("./canary/CanaryCodePanel").then((m) => ({ default: m.CanaryCodePanel })),
 );
 import { PreferencesModal } from "./PreferencesModal";
 import { ProfileModal } from "./ProfileModal";
@@ -57,6 +60,7 @@ export function Workspace() {
   }, []);
 
   const isCanary = !!channel && !!meId && isCanaryDm(channel, users, meId);
+  const isCanaryCode = !!channel && !!meId && isCanaryCodeDm(channel, users, meId);
 
   const placeholder = useMemo(() => {
     if (!channel || !meId) return "Message";
@@ -96,7 +100,12 @@ export function Workspace() {
           {threadsOpen ? (
             <ThreadsView />
           ) : channel && activeChannelId ? (
-            isCanary ? (
+            isCanaryCode ? (
+              // CanaryCode's DM is the embedded Opus dev assistant.
+              <Suspense fallback={<PanelLoading />}>
+                <CanaryCodePanel />
+              </Suspense>
+            ) : isCanary ? (
               // Canary's DM is the embedded FruitScope AI assistant, not a thread.
               <Suspense fallback={<PanelLoading />}>
                 <CanaryPanel />

@@ -1,10 +1,10 @@
-import { AtSign, ChevronRight, Hash, Lock, MessageSquare, Plus, Trash2, Users } from "lucide-react";
+import { AtSign, ChevronRight, Code2, Hash, Lock, MessageSquare, Plus, Trash2, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { Channel, ID, User } from "@shared/index";
 import { canaryApi } from "@/lib/canary";
 import { cn } from "@/lib/cn";
-import { CANARY_ID, channelTitle, isGroupDm, isSelfDm } from "@/lib/channel";
+import { canaryCodeUser, CANARY_ID, channelTitle, isGroupDm, isSelfDm } from "@/lib/channel";
 import { chat } from "@/lib/socket";
 import { useCanaryUi } from "@/store/canary";
 import { useChatStore } from "@/store/store";
@@ -60,11 +60,13 @@ export function Sidebar({
     () => users[CANARY_ID] ?? Object.values(users).find((u) => u.isCanary),
     [users],
   );
+  // CanaryCode is present only in the Orchard Robotics workspace.
+  const canaryCodeBot = useMemo(() => canaryCodeUser(users), [users]);
 
   const people = useMemo(
     () =>
       Object.values(users)
-        .filter((u) => u.id !== me?.id && !u.isCanary)
+        .filter((u) => u.id !== me?.id && !u.isCanary && !u.isCanaryCode)
         .sort((a, b) => rankStatus(b) - rankStatus(a) || a.displayName.localeCompare(b.displayName)),
     [users, me],
   );
@@ -170,6 +172,28 @@ export function Sidebar({
                   useCanaryUi.getState().requestOpen(id);
                 }}
               />
+            )}
+            {/* Pinned CanaryCode (Orchard Robotics dev assistant) — OR workspace only. */}
+            {canaryCodeBot && (
+              <li>
+                <button
+                  onClick={() => void openDm(canaryCodeBot.id)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition",
+                    (() => {
+                      const dm = dmByPartner.get(canaryCodeBot.id);
+                      return !!dm && dm.id === activeChannelId;
+                    })()
+                      ? "bg-brand-500/12 font-medium text-brand-700"
+                      : "text-ink-dim hover:bg-surface-2 hover:text-ink",
+                  )}
+                >
+                  <span className="grid size-6 shrink-0 place-items-center rounded-md bg-sky-500/15 text-sky-600">
+                    <Code2 className="size-3.5" />
+                  </span>
+                  <span className="flex-1 text-left">CanaryCode</span>
+                </button>
+              </li>
             )}
             {/* Pinned "message yourself" row, Slack-style. */}
             <SelfDmRow

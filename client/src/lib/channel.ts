@@ -3,6 +3,8 @@ import type { Channel, ID, User } from "@shared/index";
 /** The built-in Canary assistant's fixed id. Only this bot gets the embedded
  *  Canary panel; other (admin-created) bots are ordinary chat participants. */
 export const CANARY_ID = "canary";
+/** CanaryCode — the Orchard-Robotics-only dev assistant (its DM = the code panel). */
+export const CANARYCODE_ID = "canarycode";
 
 /** The "message yourself" DM — a DM whose only member is you. */
 export function isSelfDm(channel: Channel, meId: ID): boolean {
@@ -40,6 +42,18 @@ export function isCanaryDm(channel: Channel, users: Record<ID, User>, meId: ID):
   const partnerId = dmPartnerId(channel, meId);
   if (!partnerId) return false;
   return partnerId === CANARY_ID || users[partnerId]?.isCanary === true;
+}
+
+/** The CanaryCode bot user, if present (only in the Orchard Robotics workspace). */
+export function canaryCodeUser(users: Record<ID, User>): User | undefined {
+  return users[CANARYCODE_ID] ?? Object.values(users).find((u) => u.isCanaryCode);
+}
+
+/** Whether a channel is the 1:1 DM with CanaryCode (its embedded dev panel). */
+export function isCanaryCodeDm(channel: Channel, users: Record<ID, User>, meId: ID): boolean {
+  const partnerId = dmPartnerId(channel, meId);
+  if (!partnerId) return false;
+  return partnerId === CANARYCODE_ID || users[partnerId]?.isCanaryCode === true;
 }
 
 /** Human title: channel name; for DMs the participants' names (or "… (you)"). */
