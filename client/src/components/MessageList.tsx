@@ -38,7 +38,8 @@ export function MessageList({ channelId }: { channelId: ID }) {
   const virtuoso = useRef<VirtuosoHandle>(null);
   const [highlightId, setHighlightId] = useState<string | null>(jumpMessageId);
   const [firstItemIndex, setFirstItemIndex] = useState(START_INDEX);
-  const atBottom = useRef(true);
+  // State (not a ref) so the scroll-to-bottom control can react to it.
+  const [atBottom, setAtBottom] = useState(true);
   const loadingOlder = useRef(false);
   const prevFirstId = useRef<string | undefined>(undefined);
   const lastId = useRef<string | undefined>(undefined);
@@ -129,13 +130,14 @@ export function MessageList({ channelId }: { channelId: ID }) {
       ref={virtuoso}
       className="flex-1"
       data={messages}
+      // Bottom-align so a short conversation sticks to the bottom (newest at the
+      // bottom edge) instead of hanging from the top with empty space below.
+      alignToBottom
       firstItemIndex={firstItemIndex}
       initialTopMostItemIndex={initialIndex}
       startReached={() => void loadOlder()}
       followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
-      atBottomStateChange={(b) => {
-        atBottom.current = b;
-      }}
+      atBottomStateChange={setAtBottom}
       increaseViewportBy={{ top: 600, bottom: 200 }}
       components={{
         Header: () => (historyComplete ? <Intro hasMessages /> : <LoadingOlder />),
@@ -168,12 +170,20 @@ export function MessageList({ channelId }: { channelId: ID }) {
         );
       }}
     />
-      {detached && (
+      {/* Slack-style scroll-to-latest: shown whenever you're not at the bottom
+          (scrolled up in the live view) or viewing a historical jump window.
+          Detached jumps back to the live tail; otherwise it scrolls to newest. */}
+      {(detached || !atBottom) && (
         <button
-          onClick={() => void resetToLatest(channelId)}
-          className="anim-pop-in absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-brand-500 px-3.5 py-1.5 text-sm font-medium text-white shadow-floating transition hover:bg-brand-600"
+          onClick={() => {
+            if (detached) void resetToLatest(channelId);
+            else virtuoso.current?.scrollToIndex({ index: "LAST", behavior: "smooth", align: "end" });
+          }}
+          title="Scroll to latest"
+          aria-label="Scroll to latest"
+          className="anim-pop-in absolute bottom-4 right-4 grid size-10 place-items-center rounded-full border border-line bg-raised text-ink-dim shadow-floating transition hover:bg-surface-2 hover:text-brand-600"
         >
-          Jump to latest <ArrowDown className="size-4" />
+          <ArrowDown className="size-5" />
         </button>
       )}
     </div>
