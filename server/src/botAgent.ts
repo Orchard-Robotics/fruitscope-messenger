@@ -9,7 +9,7 @@ import type {
   SocketData,
 } from "@shared/index";
 import { respondAsCanary } from "./canaryAgent";
-import { botsPaused, chainInitiator, recordBotTurn, resetBots } from "./botControl";
+import { botsPaused, canBotReplyTo, chainInitiator, recordBotTurn, resetBots } from "./botControl";
 import { buildRoster, encodeMentions, mentionGuidance } from "./botRoom";
 import { llmComplete } from "./llm";
 import { emitMessage } from "./messageEmit";
@@ -116,8 +116,7 @@ export async function respondAsBot(io: IO, channelId: ID, botId: ID): Promise<vo
  * it. Canary is grounded with the chain initiator's token (bots have none).
  */
 export async function afterBotPost(io: IO, channel: Channel, message: Message): Promise<void> {
-  const paused = recordBotTurn(io, channel.id);
-  if (paused) return;
+  recordBotTurn(io, channel.id);
 
   const initiator = chainInitiator(channel.id);
   const botIds = new Set<ID>();
@@ -126,6 +125,9 @@ export async function afterBotPost(io: IO, channel: Channel, message: Message): 
     if ((await users.byId(id))?.isBot) botIds.add(id);
   }
   for (const botId of botIds) {
+    // The mentioned bot would reply to message.author (also a bot): enforce the
+    // 5-replies-in-a-row-per-pair limit + 3-minute cooldown.
+    if (!canBotReplyTo(channel.id, botId, message.authorId)) continue;
     if (botId === CANARY.id) {
       if (initiator) void respondAsCanary(io, channel.id, initiator);
     } else {

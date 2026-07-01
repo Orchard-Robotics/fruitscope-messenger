@@ -27,6 +27,9 @@ export interface ServerToClientEvents {
   // to each other (drives the "Stop bots" control), `paused` when they've been
   // stopped (manually or by the auto circuit-breaker). A human message resumes.
   "bots:state": (payload: { channelId: ID; active: boolean; paused: boolean }) => void;
+  // Sent privately to a user whose FruitScope session expired mid-Canary-reply:
+  // re-authenticate to continue. The server auto-resumes the reply after re-login.
+  "canary:reauth": (payload: { channelId: ID }) => void;
 }
 
 export interface ClientToServerEvents {

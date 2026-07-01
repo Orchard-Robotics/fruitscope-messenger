@@ -3,6 +3,7 @@ import type { Server } from "socket.io";
 import type { ClientToServerEvents, ID, ServerToClientEvents, SocketData } from "@shared/index";
 import { afterBotPost } from "./botAgent";
 import { botsPaused } from "./botControl";
+import { markCanaryReauth } from "./canaryReauth";
 import { buildRoster, encodeMentions, mentionGuidance } from "./botRoom";
 import * as fs from "./fruitscope";
 import { emitMessage } from "./messageEmit";
@@ -58,7 +59,10 @@ export async function respondAsCanary(io: IO, channelId: ID, senderId: ID): Prom
 
     const jwt = await users.fruitscopeAuthJwt(senderId);
     if (!jwt) {
-      await post("⚠️ I couldn’t reach FruitScope to answer — try signing in again.");
+      // Session expired — don't dead-end in the channel. Privately ask this sender
+      // to re-authenticate, and remember to finish the reply once they do.
+      markCanaryReauth(senderId, channelId);
+      io.to(`u:${channel.orchardId}:${senderId}`).emit("canary:reauth", { channelId });
       return;
     }
     // Ground in the sender's primary orchard (always accessible); fall back to the

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { channelTitle, isCanaryCodeDm, isCanaryDm, isSelfDm } from "@/lib/channel";
 import { lazyWithReload } from "@/lib/lazyRetry";
 import { BotActivityBanner } from "./BotActivityBanner";
+import { ReauthBanner } from "./ReauthBanner";
 import { ThreadsView } from "./ThreadsView";
 import { signOut } from "@/lib/session";
 import { useChatStore } from "@/store/store";
@@ -72,6 +73,7 @@ export function Workspace() {
   return (
     <div className="relative z-10 flex h-dvh flex-col overflow-hidden">
       <MasqueradeBanner />
+      <ReauthBanner />
       {me && (
         <TopBar
           me={me}

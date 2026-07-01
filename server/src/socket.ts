@@ -13,6 +13,8 @@ import { REACTION_EMOJI } from "@shared/index";
 import { resolveToken } from "./auth";
 import { dispatchBotReplies } from "./botAgent";
 import { stopBots } from "./botControl";
+import { respondAsCanary } from "./canaryAgent";
+import { takeCanaryReauth } from "./canaryReauth";
 import { SESSION_COOKIE } from "./env";
 import { emitMessage, redactMessage, redactMessages } from "./messageEmit";
 import { canAccess, channels, messages, orchards, reads, users } from "./store";
@@ -186,6 +188,15 @@ export async function broadcastUserUpdate(user: User): Promise<void> {
   if (!ioRef) return;
   for (const orchard of await orchards.forUser(user.id)) {
     ioRef.to(orchRoom(orchard.id)).emit("user:upserted", user);
+  }
+}
+
+/** After a user re-authenticates, finish any Canary reply that stalled on an
+ *  expired FruitScope token — their token is now refreshed on the user row. */
+export async function resumePendingCanary(userId: ID): Promise<void> {
+  if (!ioRef) return;
+  for (const channelId of takeCanaryReauth(userId)) {
+    void respondAsCanary(ioRef, channelId, userId);
   }
 }
 

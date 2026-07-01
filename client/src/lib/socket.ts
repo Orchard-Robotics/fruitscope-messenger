@@ -12,6 +12,7 @@ import type {
   ServerToClientEvents,
 } from "@shared/index";
 import { rest } from "@/lib/api";
+import { handleCanaryReauth } from "@/lib/reauth";
 import { useChatStore } from "@/store/store";
 
 type ChatSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -51,6 +52,7 @@ export function connectSocket(): ChatSocket {
   socket.on("bots:state", ({ channelId, active, paused }) =>
     store().setBotState(channelId, active, paused),
   );
+  socket.on("canary:reauth", () => handleCanaryReauth());
 
   return socket;
 }

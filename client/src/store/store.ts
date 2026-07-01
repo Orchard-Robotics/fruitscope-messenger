@@ -58,6 +58,9 @@ interface ChatState {
   activeChannelId: ID | null;
   /** When true, the main pane shows the Threads (mentions) inbox instead of a channel. */
   threadsOpen: boolean;
+  /** True when a silent FruitScope re-auth failed and we need the user to sign in
+   *  (a Canary reply is waiting to resume). */
+  reauthNeeded: boolean;
   typing: Record<ID, ID[]>;
   /** Per-channel bot-to-bot conversation state (drives the "Stop bots" control). */
   botState: Record<ID, { active: boolean; paused: boolean }>;
@@ -97,6 +100,7 @@ interface ChatState {
   /* ui actions */
   setActiveChannel: (channelId: ID) => void;
   openThreads: () => void;
+  setReauthNeeded: (v: boolean) => void;
 }
 
 /** Max messages kept in memory per channel — bounds the store + DOM. */
@@ -135,6 +139,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   activeChannelId: null,
   threadsOpen: false,
+  reauthNeeded: false,
   typing: {},
   botState: {},
   unread: {},
@@ -324,6 +329,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((s) => ({ botState: { ...s.botState, [channelId]: { active, paused } } })),
 
   openThreads: () => set({ threadsOpen: true }),
+
+  setReauthNeeded: (reauthNeeded) => set({ reauthNeeded }),
 
   setActiveChannel: (channelId) => {
     const prev = get().activeChannelId;

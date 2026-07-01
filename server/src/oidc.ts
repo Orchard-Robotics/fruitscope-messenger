@@ -120,6 +120,9 @@ export interface OidcTx {
   codeVerifier: string;
   state: string;
   nonce: string;
+  /** True for a silent (prompt=none) re-auth in a hidden iframe — the callback
+   *  answers the iframe via postMessage instead of redirecting to the app. */
+  silent?: boolean;
 }
 
 function sign(payload: string): string {
@@ -155,8 +158,10 @@ export function decodeTx(raw: string | undefined): OidcTx | null {
 /* Flow steps                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Build the authorization-request URL and the transaction to stash. */
-export async function beginLogin(): Promise<{ url: string; tx: OidcTx }> {
+/** Build the authorization-request URL and the transaction to stash. A silent
+ *  login adds prompt=none — the IdP returns a fresh session without prompting if
+ *  the SSO session is still valid, or an error if it isn't. */
+export async function beginLogin(opts?: { silent?: boolean }): Promise<{ url: string; tx: OidcTx }> {
   const config = await getOidcConfig();
   const codeVerifier = client.randomPKCECodeVerifier();
   const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);
@@ -164,6 +169,7 @@ export async function beginLogin(): Promise<{ url: string; tx: OidcTx }> {
     codeVerifier,
     state: client.randomState(),
     nonce: client.randomNonce(),
+    ...(opts?.silent ? { silent: true } : {}),
   };
 
   const url = client.buildAuthorizationUrl(config, {
@@ -173,6 +179,7 @@ export async function beginLogin(): Promise<{ url: string; tx: OidcTx }> {
     code_challenge_method: "S256",
     state: tx.state,
     nonce: tx.nonce,
+    ...(opts?.silent ? { prompt: "none" } : {}),
   });
 
   return { url: url.href, tx };

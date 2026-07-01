@@ -28,7 +28,7 @@ import {
 } from "./env";
 import type { FruitscopeIdentity } from "./oidc";
 import { beginLogin, completeLogin, decodeTx, encodeTx } from "./oidc";
-import { broadcastUserUpdate } from "./socket";
+import { broadcastUserUpdate, resumePendingCanary } from "./socket";
 import { FruitscopeApiError } from "./fruitscope";
 import { DEFAULT_MODEL_ID, isKnownModelId, modelCatalog } from "./llm";
 import { redactMessages } from "./messageEmit";
@@ -51,7 +51,7 @@ class NoOrchardError extends Error {}
  */
 async function provisionSession(
   identity: FruitscopeIdentity,
-): Promise<{ token: string; orchard: Orchard }> {
+): Promise<{ token: string; orchard: Orchard; userId: string }> {
   const user = await users.upsertFromOidc(identity);
 
   let orchard: Orchard;
@@ -66,7 +66,17 @@ async function provisionSession(
 
   await orchards.ensureMembership(orchard.id, user.id);
   const token = await createSession(user.id, orchard.id);
-  return { token, orchard };
+  return { token, orchard, userId: user.id };
+}
+
+/** A tiny page that a silent (iframe) re-auth returns, telling the parent app
+ *  whether the refresh succeeded so it can continue or fall back to a button. */
+function reauthResultPage(ok: boolean): string {
+  return (
+    `<!doctype html><meta charset="utf-8"><title>…</title><script>` +
+    `try{window.parent.postMessage({type:"fruitscope-reauth",ok:${ok ? "true" : "false"}},${JSON.stringify(APP_URL)});}catch(e){}` +
+    `</script>`
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -75,25 +85,32 @@ async function provisionSession(
 
 const TX_COOKIE_MAX_AGE_MS = 10 * 60 * 1000; // an in-flight login is short-lived
 
-/** Kick off the authorization-code + PKCE flow: redirect to the IdP. */
-api.get("/auth/login", async (_req, res) => {
+/** Kick off the authorization-code + PKCE flow: redirect to the IdP. `?silent=1`
+ *  does a prompt=none refresh in a hidden iframe (answered via postMessage). */
+api.get("/auth/login", async (req, res) => {
+  const silent = req.query.silent === "1";
   if (!oidcConfigured) {
-    res.redirect(`${APP_URL}/?login_error=unconfigured`);
+    if (silent) res.send(reauthResultPage(false));
+    else res.redirect(`${APP_URL}/?login_error=unconfigured`);
     return;
   }
   try {
-    const { url, tx } = await beginLogin();
+    const { url, tx } = await beginLogin({ silent });
     res.cookie(OIDC_TX_COOKIE, encodeTx(tx), {
       httpOnly: true,
-      secure: isProd,
-      sameSite: "lax",
+      // A silent login runs in an iframe: the IdP→callback redirect is a framed
+      // cross-site navigation, so the tx cookie needs SameSite=None (+ Secure) to
+      // ride along. The tx is signed + state/nonce-checked, so this is safe.
+      secure: isProd || silent,
+      sameSite: silent ? "none" : "lax",
       path: "/",
       maxAge: TX_COOKIE_MAX_AGE_MS,
     });
     res.redirect(url);
   } catch (err) {
     console.error("[oidc] login init failed:", err);
-    res.redirect(`${APP_URL}/?login_error=unavailable`);
+    if (silent) res.send(reauthResultPage(false));
+    else res.redirect(`${APP_URL}/?login_error=unavailable`);
   }
 });
 
@@ -109,12 +126,22 @@ api.get("/auth/callback", async (req, res) => {
 
   try {
     const identity = await completeLogin(req.originalUrl, tx);
-    const { token } = await provisionSession(identity);
+    const { token, userId } = await provisionSession(identity);
     res.cookie(SESSION_COOKIE, token, sessionCookieOptions());
+    // The token refresh lives on the user row, so any re-login resumes Canary.
+    await resumePendingCanary(userId);
+    if (tx.silent) {
+      res.send(reauthResultPage(true));
+      return;
+    }
     res.redirect(`${APP_URL}/`);
   } catch (err) {
-    const code = err instanceof NoOrchardError ? "no_orchard" : "auth_failed";
     console.error("[oidc] callback failed:", err);
+    if (tx.silent) {
+      res.send(reauthResultPage(false)); // e.g. prompt=none needs interaction
+      return;
+    }
+    const code = err instanceof NoOrchardError ? "no_orchard" : "auth_failed";
     res.redirect(`${APP_URL}/?login_error=${code}`);
   }
 });
