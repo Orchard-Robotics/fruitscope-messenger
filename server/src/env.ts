@@ -73,6 +73,11 @@ export const canaryCodeIntegrations = {
   githubOrg: process.env.GITHUB_ORG ?? "Orchard-Robotics",
   githubDefaultRepo: process.env.GITHUB_DEFAULT_REPO ?? "fruitscope",
   linearApiKey: secretOr(process.env.LINEAR_API_KEY),
+  // PostHog (read-only) for errors_recent. Host defaults to US cloud; project is
+  // auto-discovered when the id is blank. The key should be a read-scoped personal key.
+  posthogKey: secretOr(process.env.POSTHOG_API_KEY),
+  posthogHost: (process.env.POSTHOG_HOST ?? "https://us.posthog.com").replace(/\/+$/, ""),
+  posthogProjectId: process.env.POSTHOG_PROJECT_ID ?? "",
 };
 
 /** Opaque session token delivered as an httpOnly cookie after OIDC login. */

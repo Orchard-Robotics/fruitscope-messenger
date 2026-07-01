@@ -171,6 +171,27 @@ resource "google_cloud_run_v2_service" "verdant" {
         }
       }
 
+      # PostHog read-only (errors_recent): host + project are not secret; key is.
+      env {
+        name  = "POSTHOG_HOST"
+        value = var.posthog_host
+      }
+
+      env {
+        name  = "POSTHOG_PROJECT_ID"
+        value = var.posthog_project_id
+      }
+
+      env {
+        name = "POSTHOG_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.canarycode_posthog_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
       volume_mounts {
         name       = "cloudsql"
         mount_path = "/cloudsql"
@@ -196,9 +217,11 @@ resource "google_cloud_run_v2_service" "verdant" {
     google_secret_manager_secret_version.canarycode_github_app_key,
     google_secret_manager_secret_version.canarycode_github_token,
     google_secret_manager_secret_version.canarycode_linear_key,
+    google_secret_manager_secret_version.canarycode_posthog_key,
     google_secret_manager_secret_iam_member.runtime_canarycode_github_app_key,
     google_secret_manager_secret_iam_member.runtime_canarycode_github_token,
     google_secret_manager_secret_iam_member.runtime_canarycode_linear_key,
+    google_secret_manager_secret_iam_member.runtime_canarycode_posthog_key,
     google_storage_bucket_iam_member.media_writer,
   ]
 }

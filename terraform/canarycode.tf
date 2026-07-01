@@ -39,6 +39,18 @@ variable "github_app_installation_id" {
   description = "Optional: the App's installation id on the org. Auto-discovered when blank."
 }
 
+variable "posthog_host" {
+  type        = string
+  default     = "https://us.posthog.com"
+  description = "PostHog API host (US cloud by default)."
+}
+
+variable "posthog_project_id" {
+  type        = string
+  default     = ""
+  description = "Optional PostHog project id; auto-discovered from the key when blank."
+}
+
 # --- Org-owned GitHub App: private key (PEM) ---
 
 resource "google_secret_manager_secret" "canarycode_github_app_key" {
@@ -117,6 +129,33 @@ resource "google_secret_manager_secret_version" "canarycode_linear_key" {
 
 resource "google_secret_manager_secret_iam_member" "runtime_canarycode_linear_key" {
   secret_id = google_secret_manager_secret.canarycode_linear_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+
+# --- PostHog read-only personal API key ---
+
+resource "google_secret_manager_secret" "canarycode_posthog_key" {
+  secret_id = "canarycode-posthog-key"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.services]
+}
+
+resource "google_secret_manager_secret_version" "canarycode_posthog_key" {
+  secret      = google_secret_manager_secret.canarycode_posthog_key.id
+  secret_data = "unset"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "runtime_canarycode_posthog_key" {
+  secret_id = google_secret_manager_secret.canarycode_posthog_key.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.runtime.email}"
 }

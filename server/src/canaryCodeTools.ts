@@ -19,6 +19,7 @@ import { z } from "zod";
 
 import { canaryCodeIntegrations as cfg } from "./env";
 import { getGithubInstallationToken, githubConfigured } from "./githubApp";
+import { posthogConfigured, posthogQuery, type PosthogQueryResult } from "./posthog";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -372,6 +373,78 @@ const linear_search = tool({
 });
 
 /* ------------------------------------------------------------------ */
+/* PostHog (read-only)                                                 */
+/* ------------------------------------------------------------------ */
+
+/** Zip a HogQL result's columns + rows into plain objects. */
+function rowsToObjects(r: PosthogQueryResult): Array<Record<string, unknown>> {
+  return r.results.map((row) => {
+    const obj: Record<string, unknown> = {};
+    r.columns.forEach((c, i) => {
+      obj[c] = row[i];
+    });
+    return obj;
+  });
+}
+
+const errors_recent = tool({
+  description:
+    "Recent production errors from PostHog (read-only), grouped by frequency: either " +
+    "frontend/backend exceptions (JS + Python) or backend HTTP 4xx/5xx errors. Use to see " +
+    "what's breaking in prod right now.",
+  inputSchema: z.object({
+    kind: z
+      .enum(["exceptions", "http"])
+      .optional()
+      .describe("'exceptions' = JS/Python exceptions (default); 'http' = backend 4xx/5xx."),
+    hours: z
+      .number()
+      .int()
+      .min(1)
+      .max(336)
+      .optional()
+      .describe("Look-back window in hours (default 24, max 336)."),
+    limit: z.number().int().min(1).max(30).optional().describe("Max rows (default 15)."),
+  }),
+  execute: async ({ kind, hours, limit }) => {
+    if (!posthogConfigured()) {
+      return {
+        error:
+          "PostHog integration is not configured yet (no POSTHOG_API_KEY). Ask an admin to add a " +
+          "read-only PostHog key to the canarycode-posthog-key secret.",
+      };
+    }
+    // `hours`/`limit` are zod-validated integers and `kind` an enum, so nothing
+    // model-supplied is interpolated as text — the HogQL stays server-authored.
+    const h = hours ?? 24;
+    const n = limit ?? 15;
+    try {
+      if (kind === "http") {
+        const r = await posthogQuery(
+          `SELECT properties.status_code AS status, properties.method AS method, ` +
+            `properties.path AS path, properties.orchard_code AS orchard, count() AS count, ` +
+            `max(timestamp) AS last FROM events WHERE event = 'backend_http_error' ` +
+            `AND timestamp > now() - INTERVAL ${h} HOUR GROUP BY status, method, path, orchard ` +
+            `ORDER BY count DESC LIMIT ${n}`,
+        );
+        return { kind: "http", windowHours: h, errors: rowsToObjects(r) };
+      }
+      const r = await posthogQuery(
+        `SELECT JSONExtractString(properties.$exception_types, 1) AS type, ` +
+          `JSONExtractString(properties.$exception_values, 1) AS message, ` +
+          `JSONExtractString(properties.$exception_sources, 1) AS source, count() AS count, ` +
+          `max(timestamp) AS last FROM events WHERE event = '$exception' ` +
+          `AND timestamp > now() - INTERVAL ${h} HOUR GROUP BY type, message, source ` +
+          `ORDER BY count DESC LIMIT ${n}`,
+      );
+      return { kind: "exceptions", windowHours: h, errors: rowsToObjects(r) };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "PostHog request failed" };
+    }
+  },
+});
+
+/* ------------------------------------------------------------------ */
 
 /** The read-only tool set handed to CanaryCode's Opus agent. */
 export const canaryCodeTools = {
@@ -379,4 +452,5 @@ export const canaryCodeTools = {
   github_ci,
   github_pr_summary,
   linear_search,
+  errors_recent,
 };
