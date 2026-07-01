@@ -132,6 +132,22 @@ canary.get("/o/:orchard/blocks", async (req, res) => {
   }
 });
 
+/** Block boundary polygons (GeoJSON) for the map selector's outlines. */
+canary.get("/o/:orchard/block-geojson", async (req, res) => {
+  const orchard = orchardParam.safeParse(req.params.orchard);
+  if (!orchard.success) {
+    res.status(400).json({ error: "Invalid orchard" });
+    return;
+  }
+  const jwt = await tokenOr409(req, res);
+  if (!jwt) return;
+  try {
+    res.json({ geojson: await fs.getBlockBoundaries(jwt, orchard.data) });
+  } catch (err) {
+    sendUpstreamError(res, err);
+  }
+});
+
 /** A block's scan timeline (newest first) — for the scan picker / combine view. */
 canary.get("/o/:orchard/scans", async (req, res) => {
   const orchard = orchardParam.safeParse(req.params.orchard);

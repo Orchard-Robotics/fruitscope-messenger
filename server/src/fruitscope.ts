@@ -286,6 +286,18 @@ export async function getBlocks(authJwt: string, orchardCode: string): Promise<F
   return blocks && typeof blocks === "object" ? Object.values(blocks) : [];
 }
 
+/**
+ * Block boundary polygons for the map selector — a GeoJSON FeatureCollection of
+ * MultiPolygons (properties: block_id, block_name, center_lat/lon). Returned
+ * verbatim for the client to hand to MapLibre.
+ */
+export async function getBlockBoundaries(
+  authJwt: string,
+  orchardCode: string,
+): Promise<Record<string, unknown>> {
+  return orchardJson<Record<string, unknown>>(authJwt, orchardCode, "GET", "/geojson/points_block");
+}
+
 /** One scan from `/util/block_timeline` (newest-first). */
 export interface FsScan {
   scan_id: number;

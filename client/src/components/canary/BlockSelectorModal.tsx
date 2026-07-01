@@ -11,6 +11,48 @@ import { mapboxSatelliteStyle } from "@/lib/mapbox";
 
 const CIRCLES = "blocks-circles";
 
+/** Add (or refresh) block boundary polygons — a translucent fill + white outline,
+ *  inserted below the marker circles so those stay on top. Idempotent. */
+function addBoundaryLayers(
+  map: maplibregl.Map,
+  fc: GeoJSON.FeatureCollection,
+  selectedBlockId: number | null,
+): void {
+  const existing = map.getSource("block-shapes") as maplibregl.GeoJSONSource | undefined;
+  if (existing) {
+    existing.setData(fc);
+    if (map.getLayer("block-fill-selected")) {
+      map.setFilter("block-fill-selected", ["==", ["get", "block_id"], selectedBlockId ?? -1]);
+    }
+    return;
+  }
+  const below = map.getLayer(CIRCLES) ? CIRCLES : undefined;
+  map.addSource("block-shapes", { type: "geojson", data: fc });
+  map.addLayer(
+    { id: "block-fill", type: "fill", source: "block-shapes", paint: { "fill-color": "#3f8a66", "fill-opacity": 0.12 } },
+    below,
+  );
+  map.addLayer(
+    {
+      id: "block-fill-selected",
+      type: "fill",
+      source: "block-shapes",
+      filter: ["==", ["get", "block_id"], selectedBlockId ?? -1],
+      paint: { "fill-color": "#3f8a66", "fill-opacity": 0.35 },
+    },
+    below,
+  );
+  map.addLayer(
+    {
+      id: "block-outline",
+      type: "line",
+      source: "block-shapes",
+      paint: { "line-color": "#ffffff", "line-width": 2, "line-opacity": 0.8 },
+    },
+    below,
+  );
+}
+
 /** The result of the picker: a block (+ optional scan group), or "all blocks". */
 export interface BlockSelection {
   blockId: number | null;
@@ -65,6 +107,9 @@ export function BlockSelectorModal({
 
   const mapContainer = useRef<HTMLDivElement>(null);
   const drillRef = useRef<(b: CanaryBlock) => void>(() => {});
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const boundariesRef = useRef<GeoJSON.FeatureCollection | null>(null);
+  const [boundaries, setBoundaries] = useState<GeoJSON.FeatureCollection | null>(null);
 
   const blockById = useMemo(() => new Map(blocks.map((b) => [b.blockId, b])), [blocks]);
   const ordered = useMemo(() => [...blocks].sort((a, b) => scanTime(b) - scanTime(a)), [blocks]);
@@ -90,6 +135,26 @@ export function BlockSelectorModal({
       .finally(() => setScansLoading(false));
   };
   drillRef.current = drillInto;
+
+  // Fetch the block boundary polygons for the map outlines.
+  useEffect(() => {
+    let live = true;
+    canaryApi
+      .blockGeojson(orchard)
+      .then((fc) => live && setBoundaries(fc))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [orchard]);
+
+  // Draw the outlines once they've loaded (the map is created once, so this adds
+  // them to the existing map; the load handler covers the arrived-before-load case).
+  useEffect(() => {
+    boundariesRef.current = boundaries;
+    const map = mapRef.current;
+    if (map && boundaries && map.isStyleLoaded()) addBoundaryLayers(map, boundaries, selectedBlockId);
+  }, [boundaries, selectedBlockId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && (drill ? setDrill(null) : onClose());
@@ -121,7 +186,9 @@ export function BlockSelectorModal({
       zoom: 9,
       attributionControl: false,
     });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    mapRef.current = map;
+    // Top-left so the zoom buttons don't sit under the modal's top-right X.
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
 
     map.on("load", () => {
@@ -170,6 +237,21 @@ export function BlockSelectorModal({
         },
         paint: { "text-color": "#ffffff", "text-halo-color": "#000000", "text-halo-width": 1.4 },
       });
+      // Block boundary outlines, if they've loaded (below the marker circles).
+      if (boundariesRef.current) addBoundaryLayers(map, boundariesRef.current, selectedBlockId);
+    });
+
+    // Clicking a block polygon selects it, just like its marker.
+    map.on("click", "block-fill", (e) => {
+      const id = e.features?.[0]?.properties?.block_id;
+      const block = typeof id === "number" ? blockById.get(id) : undefined;
+      if (block) drillRef.current(block);
+    });
+    map.on("mouseenter", "block-fill", () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", "block-fill", () => {
+      map.getCanvas().style.cursor = "";
     });
 
     map.on("click", CIRCLES, (e) => {
@@ -190,7 +272,10 @@ export function BlockSelectorModal({
       popup.remove();
     });
 
-    return () => map.remove();
+    return () => {
+      mapRef.current = null;
+      map.remove();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -849,6 +849,23 @@ export const messages = {
     return rows.map(mapMessage);
   },
 
+  /** Recent messages that @mention `userId` across the given channels (newest
+   *  first, excluding the user's own) — the Threads / mentions inbox. */
+  mentioning: async (userId: ID, channelIds: ID[], limit: number): Promise<Message[]> => {
+    if (channelIds.length === 0) return [];
+    const rows = await prisma.message.findMany({
+      where: {
+        channelId: { in: channelIds },
+        authorId: { not: userId },
+        content: { contains: `<@${userId}>` },
+      },
+      include: messageInclude,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+    });
+    return rows.map(mapMessage);
+  },
+
   /** A window centered on a message identified by id (deep-link open), or null
    *  if it's gone or not in this channel. */
   aroundById: async (channelId: ID, messageId: ID, half: number): Promise<MessageWindow | null> => {

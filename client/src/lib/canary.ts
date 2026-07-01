@@ -135,6 +135,10 @@ export const canaryApi = {
   blocks: async (orchard: string): Promise<CanaryBlock[]> =>
     (await req<{ blocks: CanaryBlock[] }>(`${o(orchard)}/blocks`)).blocks,
 
+  /** Block boundary polygons (GeoJSON FeatureCollection) for the map outlines. */
+  blockGeojson: async (orchard: string): Promise<GeoJSON.FeatureCollection | null> =>
+    (await req<{ geojson: GeoJSON.FeatureCollection | null }>(`${o(orchard)}/block-geojson`)).geojson,
+
   /** A block's scan timeline (newest first). `blockName`, per FruitScope's quirk. */
   scans: async (orchard: string, blockName: string): Promise<CanaryScan[]> =>
     (await req<{ scans: CanaryScan[] }>(`${o(orchard)}/scans?block=${encodeURIComponent(blockName)}`))

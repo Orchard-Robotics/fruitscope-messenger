@@ -558,6 +558,18 @@ api.get("/admin/conversations/:id/messages", requireAuth, requireRealAdmin, asyn
   res.json({ channel, messages: page.messages, authors, hasMore: page.hasMore });
 });
 
+/** Your Threads inbox: recent messages that @mention you across the workspace. */
+api.get("/mentions", requireAuth, async (req, res) => {
+  const { userId, orchardId } = (req as AuthedRequest).scope;
+  const visible = await channels.visibleTo(userId, orchardId);
+  const mentions = await messages.mentioning(
+    userId,
+    visible.map((c) => c.id),
+    40,
+  );
+  res.json({ mentions });
+});
+
 /**
  * Message search across the channels the user can see in their orchard.
  * Channels/people are searched client-side (already in the store); this is the
