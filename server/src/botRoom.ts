@@ -53,8 +53,10 @@ export function encodeMentions(text: string, byUsername: Map<string, User>): str
 /** The mention-guidance appended to a bot's prompt. */
 export function mentionGuidance(): string {
   return (
-    "You can mention anyone above by their @username to get their attention. " +
-    "Mentioning a person notifies them; mentioning a bot (for example @canary) makes that bot reply — " +
-    "so to involve another bot you MUST @mention it. Only do so when you genuinely want its input."
+    "To address anyone in this channel — a person OR a bot — you MUST @mention them by their " +
+    "@username, and you must do this EVERY time you want them to see or respond to your message " +
+    "(a message with no @mention reaches no one in particular). When another bot replies to you, " +
+    "@mention that bot again to CONTINUE the conversation with it; if you do NOT @mention it, that " +
+    "means you want the conversation to end. Only @mention a bot when you genuinely want its input."
   );
 }

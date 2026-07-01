@@ -29,7 +29,10 @@ export function Sidebar({
   const mentions = useChatStore((s) => s.mentions);
   const activeChannelId = useChatStore((s) => s.activeChannelId);
   const threadsOpen = useChatStore((s) => s.threadsOpen);
-  const mentionCount = useMemo(() => Object.values(mentions).filter(Boolean).length, [mentions]);
+  const mentionCount = useMemo(
+    () => Object.values(mentions).reduce((sum, n) => sum + n, 0),
+    [mentions],
+  );
   const setActiveChannel = useChatStore((s) => s.setActiveChannel);
 
   const [creating, setCreating] = useState(false);
@@ -148,7 +151,7 @@ export function Sidebar({
                 channel={c}
                 active={c.id === activeChannelId}
                 unread={unread[c.id] ?? 0}
-                mentioned={mentions[c.id] ?? false}
+                mentions={mentions[c.id] ?? 0}
                 onClick={() => select(c.id)}
               />
             ))}
@@ -210,7 +213,7 @@ export function Sidebar({
                 count={c.memberIds.length}
                 active={c.id === activeChannelId}
                 unread={unread[c.id] ?? 0}
-                mentioned={mentions[c.id] ?? false}
+                mentions={mentions[c.id] ?? 0}
                 onClick={() => select(c.id)}
               />
             ))}
@@ -223,7 +226,7 @@ export function Sidebar({
                   person={person}
                   active={dm?.id === activeChannelId}
                   unread={dmUnread}
-                  mentioned={dm ? (mentions[dm.id] ?? false) : false}
+                  mentions={dm ? (mentions[dm.id] ?? 0) : 0}
                   onClick={() => void openDm(person.id)}
                 />
               );
@@ -273,16 +276,17 @@ function ChannelRow({
   channel,
   active,
   unread,
-  mentioned,
+  mentions,
   onClick,
 }: {
   channel: Channel;
   active: boolean;
   unread: number;
-  mentioned: boolean;
+  mentions: number;
   onClick: () => void;
 }) {
   const Icon = channel.isPrivate ? Lock : Hash;
+  const bold = unread > 0 || mentions > 0;
   return (
     <li>
       <button
@@ -291,16 +295,16 @@ function ChannelRow({
           "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition",
           active
             ? "bg-brand-500/12 text-brand-700"
-            : unread > 0
+            : bold
               ? "text-ink hover:bg-surface-2"
               : "text-ink-dim hover:bg-surface-2 hover:text-ink",
         )}
       >
         <Icon className={cn("size-4 shrink-0", active ? "text-brand-600" : "text-ink-faint")} />
-        <span className={cn("truncate", unread > 0 && !active && "font-semibold text-ink")}>
+        <span className={cn("truncate", bold && !active && "font-semibold text-ink")}>
           {channel.name}
         </span>
-        {unread > 0 && <UnreadBadge count={unread} mentioned={mentioned} />}
+        <UnreadBadge unread={unread} mentions={mentions} />
       </button>
     </li>
   );
@@ -310,13 +314,13 @@ function PersonRow({
   person,
   active,
   unread,
-  mentioned,
+  mentions,
   onClick,
 }: {
   person: User;
   active: boolean;
   unread: number;
-  mentioned: boolean;
+  mentions: number;
   onClick: () => void;
 }) {
   return (
@@ -336,10 +340,10 @@ function PersonRow({
             ring="ring-surface"
           />
         </span>
-        <span className={cn("truncate", unread > 0 && "font-semibold text-ink")}>
+        <span className={cn("truncate", (unread > 0 || mentions > 0) && "font-semibold text-ink")}>
           {person.displayName}
         </span>
-        {unread > 0 && <UnreadBadge count={unread} mentioned={mentioned} />}
+        <UnreadBadge unread={unread} mentions={mentions} />
       </button>
     </li>
   );
@@ -488,7 +492,7 @@ function SelfDmRow({
         <span className="rounded bg-surface-2 px-1 text-[10px] font-medium uppercase tracking-wide text-ink-faint">
           you
         </span>
-        {unread > 0 && <UnreadBadge count={unread} mentioned={false} />}
+        <UnreadBadge unread={unread} mentions={0} />
       </button>
     </li>
   );
@@ -500,14 +504,14 @@ function GroupDmRow({
   count,
   active,
   unread,
-  mentioned,
+  mentions,
   onClick,
 }: {
   title: string;
   count: number;
   active: boolean;
   unread: number;
-  mentioned: boolean;
+  mentions: number;
   onClick: () => void;
 }) {
   return (
@@ -522,16 +526,23 @@ function GroupDmRow({
         <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-surface-2 text-ink-dim">
           <Users className="size-3.5" />
         </span>
-        <span className={cn("truncate", unread > 0 && "font-semibold text-ink")}>{title}</span>
+        <span className={cn("truncate", (unread > 0 || mentions > 0) && "font-semibold text-ink")}>
+          {title}
+        </span>
         <span className="shrink-0 text-xs text-ink-faint">{count}</span>
-        {unread > 0 && <UnreadBadge count={unread} mentioned={mentioned} />}
+        <UnreadBadge unread={unread} mentions={mentions} />
       </button>
     </li>
   );
 }
 
 // A mention shows a red badge (Slack-style); plain unread stays brand green.
-function UnreadBadge({ count, mentioned }: { count: number; mentioned: boolean }) {
+/** Slack-style: a red badge with the @mention COUNT when you've been mentioned,
+ *  otherwise a neutral unread-count badge. */
+function UnreadBadge({ unread, mentions }: { unread: number; mentions: number }) {
+  if (mentions <= 0 && unread <= 0) return null;
+  const mentioned = mentions > 0;
+  const n = mentioned ? mentions : unread;
   return (
     <span
       className={cn(
@@ -539,7 +550,7 @@ function UnreadBadge({ count, mentioned }: { count: number; mentioned: boolean }
         mentioned ? "bg-danger" : "bg-brand-500",
       )}
     >
-      {(mentioned ? "@" : "") + (count > 99 ? "99+" : count)}
+      {n > 99 ? "99+" : n}
     </span>
   );
 }

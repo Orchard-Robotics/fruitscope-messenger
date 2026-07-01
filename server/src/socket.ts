@@ -17,7 +17,7 @@ import { respondAsCanary } from "./canaryAgent";
 import { takeCanaryReauth } from "./canaryReauth";
 import { SESSION_COOKIE } from "./env";
 import { emitMessage, redactMessage, redactMessages } from "./messageEmit";
-import { canAccess, channels, messages, orchards, reads, users } from "./store";
+import { canAccess, channels, mentions, messages, orchards, reads, users } from "./store";
 
 type InterServerEvents = Record<string, never>;
 
@@ -505,7 +505,10 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
 
   socket.on("channel:read", (payload) => {
     const parsed = channelRef.safeParse(payload);
-    if (parsed.success) void reads.set(userId, parsed.data.channelId, Date.now());
+    if (parsed.success) {
+      void reads.set(userId, parsed.data.channelId, Date.now());
+      void mentions.markRead(userId, parsed.data.channelId);
+    }
   });
 
   // Emergency brake: anyone in the room can stop bots talking to each other.

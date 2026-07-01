@@ -12,6 +12,7 @@ import type {
   ServerToClientEvents,
 } from "@shared/index";
 import { rest } from "@/lib/api";
+import { maybeNotifyMention } from "@/lib/notifications";
 import { handleCanaryReauth } from "@/lib/reauth";
 import { useChatStore } from "@/store/store";
 
@@ -42,7 +43,10 @@ export function connectSocket(): ChatSocket {
   });
   socket.on("disconnect", () => store().setConnected(false));
 
-  socket.on("message:new", (m) => store().addMessage(m));
+  socket.on("message:new", (m) => {
+    store().addMessage(m);
+    maybeNotifyMention(m);
+  });
   socket.on("message:updated", (m) => store().updateMessage(m));
   socket.on("channel:created", (c) => store().upsertChannel(c));
   socket.on("channel:updated", (c) => store().upsertChannel(c));

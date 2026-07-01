@@ -1,15 +1,17 @@
-import { Monitor, Moon, Palette, Sun, User as UserIcon, X } from "lucide-react";
+import { Bell, Monitor, Moon, Palette, Sun, User as UserIcon, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/cn";
+import { ensureNotificationPermission } from "@/lib/notifications";
 import { type Theme, usePrefs } from "@/store/prefs";
 import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
 
-type Section = "appearance" | "profile";
+type Section = "appearance" | "notifications" | "profile";
 
 const NAV: ReadonlyArray<readonly [Section, typeof Palette, string]> = [
   ["appearance", Palette, "Appearance"],
+  ["notifications", Bell, "Notifications"],
   ["profile", UserIcon, "Profile"],
 ];
 
@@ -76,6 +78,7 @@ export function PreferencesModal({
           </button>
 
           {section === "appearance" && <Appearance />}
+          {section === "notifications" && <Notifications />}
           {section === "profile" && <Profile onEditPhoto={onEditPhoto} />}
         </div>
       </div>
@@ -141,6 +144,51 @@ function Appearance() {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+function Notifications() {
+  const mentionNotifications = usePrefs((s) => s.mentionNotifications);
+  const setMentionNotifications = usePrefs((s) => s.setMentionNotifications);
+  const [perm, setPerm] = useState<NotificationPermission | "unsupported">(() =>
+    typeof Notification === "undefined" ? "unsupported" : Notification.permission,
+  );
+
+  // Flipping the toggle on prompts for permission (a user gesture, so browsers
+  // that deferred the on-load request will show it now).
+  const toggle = async (next: boolean) => {
+    setMentionNotifications(next);
+    if (next && perm === "default") {
+      const granted = await ensureNotificationPermission();
+      setPerm(granted ? "granted" : Notification.permission);
+    }
+  };
+
+  return (
+    <div className="max-w-md">
+      <h3 className="font-display text-lg font-bold text-ink">Notifications</h3>
+
+      <div className="mt-5 divide-y divide-line border-y border-line">
+        <SettingToggle
+          label="Desktop notifications for mentions"
+          hint="Get a desktop alert when someone @mentions you — with who sent it, where, and the message — just like Slack."
+          checked={mentionNotifications}
+          onChange={(v) => void toggle(v)}
+        />
+      </div>
+
+      {mentionNotifications && perm === "denied" && (
+        <p className="mt-4 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          Notifications are blocked in your browser. Enable them for this site in your browser
+          settings to receive mention alerts.
+        </p>
+      )}
+      {mentionNotifications && perm === "unsupported" && (
+        <p className="mt-4 rounded-lg bg-surface-2 px-3 py-2 text-xs text-ink-faint">
+          Your browser doesn't support desktop notifications.
+        </p>
+      )}
     </div>
   );
 }

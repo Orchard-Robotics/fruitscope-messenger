@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { rest } from "@/lib/api";
 import { clearMessageLink, openMessageLink, readMessageLink } from "@/lib/messageLink";
+import { ensureNotificationPermission } from "@/lib/notifications";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
+import { usePrefs } from "@/store/prefs";
 import { useChatStore } from "@/store/store";
 import { Login } from "./components/Login";
 import { Logo } from "./components/Logo";
@@ -44,6 +46,9 @@ export function App() {
           void openMessageLink(deepLink.channelId, deepLink.messageId);
           clearMessageLink();
         }
+        // Ask for desktop-notification permission so @mentions can alert you
+        // (best-effort; if the browser defers it, the Preferences toggle re-asks).
+        if (usePrefs.getState().mentionNotifications) void ensureNotificationPermission();
       } catch {
         disconnectSocket();
         store.setSession("anon");

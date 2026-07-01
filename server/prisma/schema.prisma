@@ -88,6 +88,8 @@ model User {
   sessions        Session[]
   reads           Read[]
   createdChannels Channel[]           @relation("ChannelCreator")
+  mentions        Mention[]
+  pushSubs        PushSubscription[]
 }
 
 model Channel {
@@ -105,6 +107,7 @@ model Channel {
   members   ChannelMember[]
   messages  Message[]
   reads     Read[]
+  mentions  Mention[]
 
   @@index([orchardId])
 }
@@ -136,8 +139,44 @@ model Message {
   channel   Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
   author    User       @relation(fields: [authorId], references: [id])
   reactions Reaction[]
+  mentions  Mention[]
 
   @@index([channelId, createdAt, id])
+}
+
+// One row per (message, mentioned user): the notifications / Threads inbox +
+// the source of Slack-style per-channel mention badges. Written when a message
+// @mentions someone; `readAt` set when they read the channel. Indexed so the
+// inbox and unread counts are fast lookups (no content scan).
+model Mention {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  channelId String
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, createdAt])
+  @@index([userId, channelId, readAt])
+}
+
+// A browser Web Push subscription for a user's device — so @mention
+// notifications reach them even when the app/tab is closed.
+model PushSubscription {
+  endpoint  String   @id
+  userId    String
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Reaction {

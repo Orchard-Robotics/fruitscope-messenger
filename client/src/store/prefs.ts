@@ -8,6 +8,8 @@ interface Persisted {
   reduceMotion: boolean;
   /** Admins-only: show Canary's debug context (prompt/context/token usage). */
   showCanaryDebug: boolean;
+  /** Desktop notifications when you're @mentioned. */
+  mentionNotifications: boolean;
 }
 
 interface PrefsState extends Persisted {
@@ -15,6 +17,7 @@ interface PrefsState extends Persisted {
   setCompact: (compact: boolean) => void;
   setReduceMotion: (reduceMotion: boolean) => void;
   setShowCanaryDebug: (showCanaryDebug: boolean) => void;
+  setMentionNotifications: (mentionNotifications: boolean) => void;
 }
 
 const KEY = "fruitscope.prefs";
@@ -25,6 +28,7 @@ const DEFAULTS: Persisted = {
   compact: false,
   reduceMotion: false,
   showCanaryDebug: true,
+  mentionNotifications: true,
 };
 
 function loadPrefs(): Persisted {
@@ -59,8 +63,8 @@ function persist(p: Persisted): void {
 export const usePrefs = create<PrefsState>((set, get) => {
   const update = (partial: Partial<Persisted>): void => {
     set(partial);
-    const { theme, compact, reduceMotion, showCanaryDebug } = get();
-    const next: Persisted = { theme, compact, reduceMotion, showCanaryDebug };
+    const { theme, compact, reduceMotion, showCanaryDebug, mentionNotifications } = get();
+    const next: Persisted = { theme, compact, reduceMotion, showCanaryDebug, mentionNotifications };
     persist(next);
     applyPrefs(next);
   };
@@ -70,6 +74,7 @@ export const usePrefs = create<PrefsState>((set, get) => {
     setCompact: (compact) => update({ compact }),
     setReduceMotion: (reduceMotion) => update({ reduceMotion }),
     setShowCanaryDebug: (showCanaryDebug) => update({ showCanaryDebug }),
+    setMentionNotifications: (mentionNotifications) => update({ mentionNotifications }),
   };
 });
 

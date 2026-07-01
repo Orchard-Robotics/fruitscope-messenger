@@ -32,7 +32,7 @@ import { broadcastUserUpdate, resumePendingCanary } from "./socket";
 import { FruitscopeApiError } from "./fruitscope";
 import { DEFAULT_MODEL_ID, isKnownModelId, modelCatalog } from "./llm";
 import { redactMessages } from "./messageEmit";
-import { bootstrap, bots, channels, messages, orchards, users } from "./store";
+import { bootstrap, bots, channels, mentions, messages, orchards, users } from "./store";
 import { listSyncOrchards, previewOrchard, syncOrchard } from "./sync";
 import { deleteObject, uploadObject } from "./storage";
 
@@ -630,16 +630,17 @@ api.post("/canarycode/chat", requireAuth, async (req, res) => {
   }
 });
 
-/** Your Threads inbox: recent messages that @mention you across the workspace. */
+/** Your Threads inbox: recent messages that @mention you in this workspace
+ *  (fast indexed lookup via the Mention table, each with an unread flag). */
 api.get("/mentions", requireAuth, async (req, res) => {
   const { userId, orchardId } = (req as AuthedRequest).scope;
   const visible = await channels.visibleTo(userId, orchardId);
-  const mentions = await messages.mentioning(
+  const inbox = await mentions.inbox(
     userId,
     visible.map((c) => c.id),
-    40,
+    50,
   );
-  res.json({ mentions });
+  res.json({ mentions: inbox });
 });
 
 /**

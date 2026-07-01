@@ -102,6 +102,8 @@ export interface Bootstrap {
   /** Members of this orchard. */
   users: User[];
   channels: Channel[];
+  /** Unread @mention counts per channel — the Slack-style mention badges. */
+  mentions: Record<ID, number>;
   /**
    * Whether the signed-in user is a FruitScope super admin. Super admins land on
    * the orchard-robotics namespace and may switch into any other orchard via the
@@ -285,6 +287,12 @@ export interface MessageWindow {
   messages: Message[];
   hasBefore: boolean;
   hasAfter: boolean;
+}
+
+/** One entry in the Threads inbox: a message that @mentions you + unread flag. */
+export interface ThreadMention {
+  message: Message;
+  unread: boolean;
 }
 
 /** Discriminated result returned through Socket.IO acknowledgements. */

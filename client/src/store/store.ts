@@ -65,8 +65,8 @@ interface ChatState {
   /** Per-channel bot-to-bot conversation state (drives the "Stop bots" control). */
   botState: Record<ID, { active: boolean; paused: boolean }>;
   unread: Record<ID, number>;
-  /** Channels with an unread message that @mentions me (Slack-style emphasis). */
-  mentions: Record<ID, boolean>;
+  /** Unread @mention COUNT per channel (Slack-style red badge + emphasis). */
+  mentions: Record<ID, number>;
 
   /* session actions */
   signIn: (me: User) => void;
@@ -194,6 +194,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         masquerade: data.masquerade,
         users,
         channels: toRecord(data.channels),
+        // Seed the Slack-style mention badges so they show on load.
+        mentions: data.mentions ?? {},
         session: "ready",
         activeChannelId: state.activeChannelId ?? pickInitialChannel(data.channels),
       };
@@ -225,7 +227,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           : s.unread;
         const mentionsMe = counts && s.me ? contentMentions(message.content, s.me.id) : false;
         const mentions = mentionsMe
-          ? { ...s.mentions, [message.channelId]: true }
+          ? { ...s.mentions, [message.channelId]: (s.mentions[message.channelId] ?? 0) + 1 }
           : s.mentions;
         return { unread, mentions };
       }
@@ -252,7 +254,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const mentionsMe =
         countsAsUnread && s.me ? contentMentions(message.content, s.me.id) : false;
       const mentions = mentionsMe
-        ? { ...s.mentions, [message.channelId]: true }
+        ? { ...s.mentions, [message.channelId]: (s.mentions[message.channelId] ?? 0) + 1 }
         : s.mentions;
 
       return {
@@ -340,7 +342,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         activeChannelId: channelId,
         threadsOpen: false,
         unread: { ...s.unread, [channelId]: 0 },
-        mentions: { ...s.mentions, [channelId]: false },
+        mentions: { ...s.mentions, [channelId]: 0 },
         // A normal channel switch isn't a jump — drop any pending jump.
         jumpTarget: null,
       };

@@ -868,6 +868,20 @@ export const messages = {
       },
       include: messageInclude,
     });
+    // Record @mentions (for the Threads inbox, badges, and notifications). Only
+    // for real users other than the author; the token set is small.
+    const ids = [...new Set([...content.matchAll(/<@([A-Za-z0-9_-]+)>/g)].map((m) => m[1] as ID))].filter(
+      (id) => id !== authorId,
+    );
+    if (ids.length) {
+      const valid = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true } });
+      if (valid.length) {
+        await prisma.mention.createMany({
+          data: valid.map((u) => ({ messageId: row.id, userId: u.id, channelId })),
+          skipDuplicates: true,
+        });
+      }
+    }
     return mapMessage(row);
   },
 
@@ -979,6 +993,53 @@ export const messages = {
 };
 
 /* ------------------------------------------------------------------ */
+/* Mentions — the Threads inbox + per-channel badges (indexed lookups)  */
+/* ------------------------------------------------------------------ */
+
+export interface ThreadMention {
+  message: Message;
+  /** Still unread (drives the Slack-style highlight). */
+  unread: boolean;
+}
+
+export const mentions = {
+  /** Unread mention counts per channel for a user, scoped to the given (visible)
+   *  channels — the Slack-style badge numbers. */
+  unreadCounts: async (userId: ID, channelIds: ID[]): Promise<Record<ID, number>> => {
+    if (channelIds.length === 0) return {};
+    const rows = await prisma.mention.groupBy({
+      by: ["channelId"],
+      where: { userId, readAt: null, channelId: { in: channelIds } },
+      _count: { _all: true },
+    });
+    const out: Record<ID, number> = {};
+    for (const r of rows) out[r.channelId] = r._count._all;
+    return out;
+  },
+
+  /** The Threads inbox: recent mentions for a user within the given channels,
+   *  newest first, each with its message + unread flag. Fast indexed lookup. */
+  inbox: async (userId: ID, channelIds: ID[], limit: number): Promise<ThreadMention[]> => {
+    if (channelIds.length === 0) return [];
+    const rows = await prisma.mention.findMany({
+      where: { userId, channelId: { in: channelIds } },
+      orderBy: [{ createdAt: "desc" }],
+      take: limit,
+      include: { message: { include: messageInclude } },
+    });
+    return rows.map((r) => ({ message: mapMessage(r.message), unread: r.readAt === null }));
+  },
+
+  /** Mark a channel's mentions read for a user (when they read the channel). */
+  markRead: async (userId: ID, channelId: ID): Promise<void> => {
+    await prisma.mention.updateMany({
+      where: { userId, channelId, readAt: null },
+      data: { readAt: new Date() },
+    });
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* Read receipts                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -1018,12 +1079,18 @@ export async function bootstrap(userId: ID, orchardId: ID): Promise<Bootstrap> {
     orchards.members(orchardId),
     channels.visibleTo(userId, orchardId),
   ]);
+  // Per-channel unread mention counts, so the Slack-style badges show on load.
+  const mentionCounts = await mentions.unreadCounts(
+    userId,
+    visible.map((c) => c.id),
+  );
 
   return {
     me: mapUser(meRow),
     orchard,
     users: members,
     channels: visible,
+    mentions: mentionCounts,
     isSuperAdmin: meRow.isSuperAdmin,
     // Canary "general" mode is Orchard Robotics staff only (matches the
     // FruitScope backend gate, which is strictly email-domain based).
