@@ -18,6 +18,7 @@ import { tool } from "ai";
 import { z } from "zod";
 
 import { canaryCodeIntegrations as cfg } from "./env";
+import { getGithubInstallationToken, githubConfigured } from "./githubApp";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -67,21 +68,30 @@ type GhResult = { ok: true; data: unknown } | { ok: false; error: string };
  * read-only enforcement lives here, not in a convention a caller must remember.
  */
 async function ghFetch(path: string): Promise<GhResult> {
-  if (!cfg.githubToken) {
+  if (!githubConfigured()) {
     return {
       ok: false,
       error:
-        "GitHub integration is not configured yet (no GITHUB_TOKEN). Ask an admin to add a " +
-        "read-only token to the canarycode-github-token secret.",
+        "GitHub integration is not configured yet. Ask an admin to register the org-owned " +
+        "GitHub App (read-only) and add its private key to the canarycode-github-app-key secret.",
     };
   }
+  // Prefer the org-owned GitHub App installation token; fall back to a static token.
+  let token: string | null;
+  try {
+    token = (await getGithubInstallationToken()) ?? cfg.githubToken;
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "GitHub auth failed" };
+  }
+  if (!token) return { ok: false, error: "GitHub integration is not configured yet." };
+
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   try {
     const res = await fetch(`${GH_API}${path}`, {
       method: "GET", // read-only: this helper NEVER issues any other verb.
       headers: {
-        Authorization: `Bearer ${cfg.githubToken}`,
+        Authorization: `Bearer ${token}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "canarycode",

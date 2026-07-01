@@ -62,6 +62,13 @@ const secretOr = (v: string | undefined): string => {
 };
 
 export const canaryCodeIntegrations = {
+  // Org-owned GitHub App (preferred): the credential belongs to Orchard-Robotics,
+  // not a person. The App ID and installation id are not secret; the private key
+  // is. Installation id is auto-discovered from the org when left blank.
+  githubAppId: process.env.GITHUB_APP_ID ?? "",
+  githubAppPrivateKey: secretOr(process.env.GITHUB_APP_PRIVATE_KEY),
+  githubAppInstallationId: process.env.GITHUB_APP_INSTALLATION_ID ?? "",
+  // Optional fallback: a static token (e.g. a PAT) if ever preferred over the App.
   githubToken: secretOr(process.env.GITHUB_TOKEN),
   githubOrg: process.env.GITHUB_ORG ?? "Orchard-Robotics",
   githubDefaultRepo: process.env.GITHUB_DEFAULT_REPO ?? "fruitscope",

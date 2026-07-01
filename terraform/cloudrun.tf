@@ -127,8 +127,30 @@ resource "google_cloud_run_v2_service" "verdant" {
         }
       }
 
-      # CanaryCode read-only dev tools (GitHub + Linear). Dormant until a real,
-      # read-only token is added to each secret; the app treats "unset" as absent.
+      # CanaryCode read-only dev tools (GitHub + Linear). Dormant until real,
+      # read-only credentials are added; the app treats "unset"/blank as absent.
+      # GitHub auth is an org-owned GitHub App: id (not secret) + private key.
+      env {
+        name  = "GITHUB_APP_ID"
+        value = var.github_app_id
+      }
+
+      env {
+        name  = "GITHUB_APP_INSTALLATION_ID"
+        value = var.github_app_installation_id
+      }
+
+      env {
+        name = "GITHUB_APP_PRIVATE_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.canarycode_github_app_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      # Optional static-token fallback (a PAT), if ever preferred over the App.
       env {
         name = "GITHUB_TOKEN"
         value_source {
@@ -171,8 +193,10 @@ resource "google_cloud_run_v2_service" "verdant" {
     google_secret_manager_secret_iam_member.runtime_anthropic_key,
     google_secret_manager_secret_iam_member.runtime_openai_key,
     google_secret_manager_secret_iam_member.runtime_google_key,
+    google_secret_manager_secret_version.canarycode_github_app_key,
     google_secret_manager_secret_version.canarycode_github_token,
     google_secret_manager_secret_version.canarycode_linear_key,
+    google_secret_manager_secret_iam_member.runtime_canarycode_github_app_key,
     google_secret_manager_secret_iam_member.runtime_canarycode_github_token,
     google_secret_manager_secret_iam_member.runtime_canarycode_linear_key,
     google_storage_bucket_iam_member.media_writer,
