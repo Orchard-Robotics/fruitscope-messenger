@@ -47,6 +47,27 @@ export const superAdminOrchard = {
   name: process.env.SUPERADMIN_ORCHARD_NAME ?? "Orchard Robotics",
 };
 
+/**
+ * Read-only integration tokens for CanaryCode's developer tools (Phase 2:
+ * GitHub + Linear). Each tool is GET/query-only and stays dormant — returning a
+ * "not configured" note instead of erroring — until its secret is provisioned.
+ * Populate the Secret Manager secrets `canarycode-github-token` /
+ * `canarycode-linear-key` to light them up. NEVER give these write scopes.
+ */
+// Terraform seeds each secret with the placeholder "unset" so the deploy never
+// breaks; treat that (and blank) as "no token", keeping the tool dormant.
+const secretOr = (v: string | undefined): string => {
+  const t = (v ?? "").trim();
+  return t === "unset" ? "" : t;
+};
+
+export const canaryCodeIntegrations = {
+  githubToken: secretOr(process.env.GITHUB_TOKEN),
+  githubOrg: process.env.GITHUB_ORG ?? "Orchard-Robotics",
+  githubDefaultRepo: process.env.GITHUB_DEFAULT_REPO ?? "fruitscope",
+  linearApiKey: secretOr(process.env.LINEAR_API_KEY),
+};
+
 /** Opaque session token delivered as an httpOnly cookie after OIDC login. */
 export const SESSION_COOKIE = process.env.SESSION_COOKIE_NAME ?? "fsm_session";
 /** Short-lived signed cookie holding the in-flight OIDC PKCE transaction. */

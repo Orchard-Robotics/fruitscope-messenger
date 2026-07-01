@@ -127,6 +127,28 @@ resource "google_cloud_run_v2_service" "verdant" {
         }
       }
 
+      # CanaryCode read-only dev tools (GitHub + Linear). Dormant until a real,
+      # read-only token is added to each secret; the app treats "unset" as absent.
+      env {
+        name = "GITHUB_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.canarycode_github_token.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "LINEAR_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.canarycode_linear_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
       volume_mounts {
         name       = "cloudsql"
         mount_path = "/cloudsql"
@@ -149,6 +171,10 @@ resource "google_cloud_run_v2_service" "verdant" {
     google_secret_manager_secret_iam_member.runtime_anthropic_key,
     google_secret_manager_secret_iam_member.runtime_openai_key,
     google_secret_manager_secret_iam_member.runtime_google_key,
+    google_secret_manager_secret_version.canarycode_github_token,
+    google_secret_manager_secret_version.canarycode_linear_key,
+    google_secret_manager_secret_iam_member.runtime_canarycode_github_token,
+    google_secret_manager_secret_iam_member.runtime_canarycode_linear_key,
     google_storage_bucket_iam_member.media_writer,
   ]
 }

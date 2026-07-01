@@ -12,7 +12,7 @@ import { CanaryMessage, type UIMessage } from "./CanaryMessage";
  * CanaryCode — the Orchard-Robotics-only developer assistant. Reuses Canary's
  * message rendering (markdown, reasoning, tool cards) but streams from a
  * first-party Claude Opus agent (POST /api/canarycode/chat) instead of the
- * FruitScope AI proxy. Phase 0: chat only; read-only dev tools come next.
+ * FruitScope AI proxy. Runs strictly read-only dev tools (GitHub PRs/CI, Linear).
  */
 export function CanaryCodePanel() {
   const showCanaryDebug = usePrefs((s) => s.showCanaryDebug);
@@ -58,8 +58,9 @@ export function CanaryCodePanel() {
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-ink-faint">
             <Code2 className="size-8" />
             <p className="max-w-sm text-sm">
-              Ask CanaryCode about the FruitScope codebase, debugging, or infrastructure. Read-only
-              tools into prod (logs, deploys, data, code search) are coming soon.
+              Ask CanaryCode about the FruitScope codebase, debugging, or infrastructure. It has
+              read-only tools into GitHub (PRs &amp; CI) and Linear — ask “what PRs are open?” or
+              “is the build passing?”. More read-only tools coming soon.
             </p>
           </div>
         )}

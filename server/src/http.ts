@@ -1,5 +1,5 @@
 import { anthropic } from "@ai-sdk/anthropic";
-import { convertToModelMessages, streamText, type UIMessage } from "ai";
+import { convertToModelMessages, stepCountIs, streamText, type UIMessage } from "ai";
 import { Router } from "express";
 import multer from "multer";
 import sharp from "sharp";
@@ -29,6 +29,7 @@ import {
 import type { FruitscopeIdentity } from "./oidc";
 import { beginLogin, completeLogin, decodeTx, encodeTx } from "./oidc";
 import { broadcastUserUpdate, resumePendingCanary } from "./socket";
+import { canaryCodeTools } from "./canaryCodeTools";
 import { FruitscopeApiError } from "./fruitscope";
 import { DEFAULT_MODEL_ID, isKnownModelId, modelCatalog } from "./llm";
 import { redactMessages } from "./messageEmit";
@@ -598,10 +599,18 @@ const CANARYCODE_SYSTEM = [
   "Cloud SQL, a React/TypeScript frontend, and this messenger app (Node/Express +",
   "React + Prisma on Cloud Run). Help developers debug issues, understand the",
   "codebase, write and review code, and reason about the infrastructure. Be precise,",
-  "concise, and practical; put code in fenced markdown blocks. You don't yet have",
-  "live tools into production — read-only tool calls (logs, deploys, data, code",
-  "search) are coming soon; when a question needs live data you don't have, say so.",
-].join(" ");
+  "concise, and practical; put code in fenced markdown blocks.",
+  "",
+  "You have READ-ONLY tools into the team's GitHub and Linear:",
+  "- github_prs: list pull requests in a repo (default repo: fruitscope).",
+  "- github_ci: CI / check-run status for a PR or a branch/SHA.",
+  "- github_pr_summary: details of one PR (description, reviews, mergeability, diff size).",
+  "- linear_search: search Linear issues by text.",
+  "Use them whenever a question needs live PR, CI, or ticket state — don't guess when",
+  "you can look. Every tool is strictly read-only: you cannot merge, comment, deploy,",
+  "create, or change anything, so never claim you did. If a tool reports it isn't",
+  "configured, tell the user the integration needs a token and answer from what you know.",
+].join("\n");
 
 /** Stream an Opus chat turn for CanaryCode (Orchard Robotics staff only). Uses
  *  the Vercel AI SDK so the reply speaks the same protocol the client's useChat
@@ -622,6 +631,10 @@ api.post("/canarycode/chat", requireAuth, async (req, res) => {
       model: anthropic("claude-opus-4-8"),
       system: CANARYCODE_SYSTEM,
       messages: await convertToModelMessages(messages),
+      tools: canaryCodeTools,
+      // Let Opus call read-only tools and then answer from the results; cap the
+      // number of tool round-trips so a turn always terminates.
+      stopWhen: stepCountIs(8),
     });
     result.pipeUIMessageStreamToResponse(res);
   } catch (err) {
