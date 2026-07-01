@@ -136,7 +136,13 @@ export function MessageList({ channelId }: { channelId: ID }) {
       firstItemIndex={firstItemIndex}
       initialTopMostItemIndex={initialIndex}
       startReached={() => void loadOlder()}
-      followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
+      // Slack-style: when you're at (or near) the bottom, a new message keeps you
+      // pinned there so you always see it; when you've scrolled up, it doesn't
+      // yank you down. The generous threshold treats "within ~120px of the bottom"
+      // as at-bottom (the strict 4px default stops following the moment the typing
+      // footer or a partial row nudges you off the very edge).
+      atBottomThreshold={120}
+      followOutput={(isAtBottom) => (isAtBottom ? "smooth" : false)}
       atBottomStateChange={setAtBottom}
       increaseViewportBy={{ top: 600, bottom: 200 }}
       components={{
