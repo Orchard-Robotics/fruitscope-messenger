@@ -603,7 +603,7 @@ const CANARYCODE_SYSTEM = [
   "",
   "You have READ-ONLY tools into the team's GitHub and Linear:",
   "- github_prs: list pull requests in a repo (default repo: fruitscope).",
-  "- github_ci: CI / check-run status for a PR or a branch/SHA.",
+  "- github_ci: CI status (Actions workflow runs + commit statuses) for a PR or a branch/SHA.",
   "- github_pr_summary: details of one PR (description, reviews, mergeability, diff size).",
   "- linear_search: search Linear issues by text.",
   "Use them whenever a question needs live PR, CI, or ticket state — don't guess when",

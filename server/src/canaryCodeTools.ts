@@ -52,9 +52,14 @@ interface GhReview {
   state?: string;
   user?: { login?: string };
 }
-interface GhCheckRuns {
+interface GhWorkflowRuns {
   total_count?: number;
-  check_runs?: Array<{ name?: string; status?: string; conclusion?: string | null }>;
+  workflow_runs?: Array<{
+    name?: string;
+    status?: string;
+    conclusion?: string | null;
+    html_url?: string;
+  }>;
 }
 interface GhCombinedStatus {
   state?: string;
@@ -162,8 +167,8 @@ const github_prs = tool({
 
 const github_ci = tool({
   description:
-    "Get CI status (GitHub Actions check runs + commit statuses) for a pull request " +
-    "or a branch/SHA in an Orchard-Robotics repo (read-only). Use to see if a build passed.",
+    "Get CI status for a pull request or a branch/SHA in an Orchard-Robotics repo " +
+    "(read-only): GitHub Actions workflow runs plus any commit statuses. Use to see if a build passed.",
   inputSchema: z.object({
     repo: z.string().optional().describe('Repo name or "owner/repo". Defaults to fruitscope.'),
     pr: z.number().int().optional().describe("PR number to check (resolves its head commit)."),
@@ -181,28 +186,43 @@ const github_ci = tool({
       sha = (pd.data as GhPull).head?.sha;
     }
     if (!sha) return { error: "Provide either a `pr` number or a `ref` (branch or SHA)." };
+
+    // Actions workflow runs (Actions:Read) + combined commit status (Commit
+    // statuses:Read). We avoid the check-runs API on purpose — it needs the
+    // "Checks" permission, which fine-grained PATs don't expose.
     const [runsR, statusR] = await Promise.all([
-      ghFetch(`/repos/${slug}/commits/${encodeURIComponent(sha)}/check-runs?per_page=50`),
+      ghFetch(`/repos/${slug}/actions/runs?head_sha=${encodeURIComponent(sha)}&per_page=30`),
       ghFetch(`/repos/${slug}/commits/${encodeURIComponent(sha)}/status`),
     ]);
     if (!runsR.ok) return { error: runsR.error };
-    const runs = runsR.data as GhCheckRuns;
-    const checks = (runs.check_runs ?? []).map((c) => ({
-      name: c.name,
-      status: c.status,
-      conclusion: c.conclusion,
+
+    const runs = (runsR.data as GhWorkflowRuns).workflow_runs ?? [];
+    const workflows = runs.map((r) => ({
+      name: r.name,
+      status: r.status,
+      conclusion: r.conclusion,
+      url: r.html_url,
     }));
-    const combined = statusR.ok ? (statusR.data as GhCombinedStatus).state : undefined;
-    const failing = checks.filter(
-      (c) => c.conclusion && !["success", "neutral", "skipped"].includes(c.conclusion),
-    );
+
+    const statusData = statusR.ok ? (statusR.data as GhCombinedStatus) : undefined;
+    const statuses = (statusData?.statuses ?? []).map((s) => ({
+      context: s.context,
+      state: s.state,
+    }));
+
+    const bad = (c: string | null | undefined): boolean =>
+      !!c && !["success", "neutral", "skipped"].includes(c);
+    const failingWorkflows = workflows.filter((w) => bad(w.conclusion)).length;
+    const running = workflows.some((w) => w.status !== "completed");
+    const overall = failingWorkflows > 0 ? "failing" : running ? "in_progress" : "passing";
+
     return {
       repo: slug,
       ref: sha,
-      combinedStatus: combined,
-      totalChecks: checks.length,
-      failing: failing.length,
-      checks,
+      overall,
+      combinedStatus: statusData?.state,
+      workflows,
+      statuses,
     };
   },
 });
