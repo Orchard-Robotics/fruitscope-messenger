@@ -29,13 +29,17 @@ export function dmPartnerId(channel: Channel, meId: ID): ID | undefined {
 
 /** The Canary bot user in the directory, if present (a global, per-orchard bot). */
 export function canaryUser(users: Record<ID, User>): User | undefined {
-  return users[CANARY_ID];
+  return users[CANARY_ID] ?? Object.values(users).find((u) => u.isCanary);
 }
 
 /** Whether a channel is the 1:1 DM with the Canary assistant (its embedded panel).
- *  Generic LLM bots are NOT Canary — their DMs are ordinary message threads. */
-export function isCanaryDm(channel: Channel, _users: Record<ID, User>, meId: ID): boolean {
-  return dmPartnerId(channel, meId) === CANARY_ID;
+ *  Generic LLM bots are NOT Canary — their DMs are ordinary message threads.
+ *  Recognized by Canary's fixed id OR the server's `isCanary` flag (robust to a
+ *  legacy Canary row whose id isn't "canary"). */
+export function isCanaryDm(channel: Channel, users: Record<ID, User>, meId: ID): boolean {
+  const partnerId = dmPartnerId(channel, meId);
+  if (!partnerId) return false;
+  return partnerId === CANARY_ID || users[partnerId]?.isCanary === true;
 }
 
 /** Human title: channel name; for DMs the participants' names (or "… (you)"). */

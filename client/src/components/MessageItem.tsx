@@ -3,7 +3,6 @@ import { useState } from "react";
 
 import type { ID, Message, User } from "@shared/index";
 import { REACTION_EMOJI } from "@shared/index";
-import { CANARY_ID } from "@/lib/channel";
 import { cn } from "@/lib/cn";
 import { timeOfDay } from "@/lib/format";
 import { copyToClipboard, messageLink, messagePlainText } from "@/lib/messageLink";
@@ -64,7 +63,7 @@ export function MessageItem({ message, author, showHeader, meId, highlighted }: 
     >
       <div className="w-10 shrink-0">
         {showHeader ? (
-          author?.id === CANARY_ID ? (
+          author?.isCanary ? (
             <CanaryAvatar size={40} className="rounded-xl" />
           ) : (
             <Avatar user={author ?? FALLBACK} size={40} />

@@ -54,12 +54,15 @@ export function Sidebar({
 
   // Canary (the built-in assistant) gets its own pinned row, so keep it out of the
   // people list. Admin-created LLM bots are ordinary participants and stay in it.
-  const canaryBot = useMemo(() => users[CANARY_ID], [users]);
+  const canaryBot = useMemo(
+    () => users[CANARY_ID] ?? Object.values(users).find((u) => u.isCanary),
+    [users],
+  );
 
   const people = useMemo(
     () =>
       Object.values(users)
-        .filter((u) => u.id !== me?.id && u.id !== CANARY_ID)
+        .filter((u) => u.id !== me?.id && !u.isCanary)
         .sort((a, b) => rankStatus(b) - rankStatus(a) || a.displayName.localeCompare(b.displayName)),
     [users, me],
   );

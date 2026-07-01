@@ -34,12 +34,18 @@ type DbMessage = Prisma.MessageGetPayload<{ include: { reactions: true } }>;
 const channelInclude = { members: true } satisfies Prisma.ChannelInclude;
 const messageInclude = { reactions: true } satisfies Prisma.MessageInclude;
 
+// The built-in Canary bot's stable identity — by id OR its fixed oidcSub, so a
+// legacy row with a different id is still recognized as Canary.
+const CANARY_ID = "canary";
+const CANARY_OIDC_SUB = "fruitscope:canary-bot";
+
 function mapUser(row: DbUser): User {
   return {
     id: row.id,
     username: row.username,
     displayName: row.displayName,
     isBot: row.isBot,
+    isCanary: row.id === CANARY_ID || row.oidcSub === CANARY_OIDC_SUB,
     hue: row.hue,
     // Build the public CDN/emulator URL from the stored key at read time.
     avatarUrl: row.avatarKey ? publicUrl(row.avatarKey) : null,

@@ -14,11 +14,15 @@ export interface User {
   id: ID;
   username: string;
   displayName: string;
-  /**
-   * True for the built-in Canary AI assistant — a global bot present in every
-   * orchard. The client renders its DM as the embedded Canary chat panel.
-   */
+  /** True for any bot — the built-in Canary assistant OR an admin-created LLM bot. */
   isBot: boolean;
+  /**
+   * True ONLY for the built-in Canary AI assistant (not admin-created LLM bots).
+   * The client renders Canary's DM as the embedded Canary chat panel; every other
+   * bot is an ordinary chat participant. Server-authoritative (by Canary's stable
+   * identity), so it never depends on the client guessing which bot is Canary.
+   */
+  isCanary: boolean;
   /** A stable HSL hue (0–360) used to render the avatar gradient fallback. */
   hue: number;
   /**
