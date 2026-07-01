@@ -18,6 +18,17 @@ import type {
 /** Full-page navigation target that starts the "Sign in with FruitScope" flow. */
 export const LOGIN_URL = "/api/auth/login";
 
+/** Result of a read-only SQL query from CanaryCode's DB tool / editor. */
+export interface SqlQueryResult {
+  database?: string;
+  fields?: string[];
+  rows?: Array<Record<string, unknown>>;
+  rowCount?: number;
+  truncated?: boolean;
+  ms?: number;
+  error?: string;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
     // The session rides on an httpOnly cookie — same-origin in dev (via the Vite
@@ -136,6 +147,16 @@ export const rest = {
   /** Permanently delete a bot and its messages. */
   deleteBot: (id: string) =>
     request<{ ok: true }>(`/admin/bots/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  /* ---- CanaryCode: interactive read-only SQL (staff only) ---- */
+  /** Run a read-only SQL query against the shared FruitScope DB; returns rows or an error. */
+  dbQuery: (sql: string, database?: string, limit?: number) =>
+    request<SqlQueryResult>("/canarycode/db/query", {
+      method: "POST",
+      body: JSON.stringify({ sql, ...(database ? { database } : {}), ...(limit ? { limit } : {}) }),
+    }),
+  /** List databases on the shared instance for the SQL editor's picker. */
+  dbDatabases: () => request<{ databases: string[]; error?: string }>("/canarycode/db/databases"),
 
   /* ---- admin: conversation monitor ---- */
   /** Every conversation across all workspaces (newest activity first). */

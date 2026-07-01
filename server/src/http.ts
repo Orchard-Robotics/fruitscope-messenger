@@ -1,6 +1,6 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { convertToModelMessages, stepCountIs, streamText, type UIMessage } from "ai";
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import sharp from "sharp";
 import { nanoid } from "nanoid";
@@ -30,6 +30,7 @@ import type { FruitscopeIdentity } from "./oidc";
 import { beginLogin, completeLogin, decodeTx, encodeTx } from "./oidc";
 import { broadcastUserUpdate, resumePendingCanary } from "./socket";
 import { canaryCodeTools } from "./canaryCodeTools";
+import { fruitscopeDbConfigured, runReadOnlyQuery } from "./fruitscopeDb";
 import { FruitscopeApiError } from "./fruitscope";
 import { DEFAULT_MODEL_ID, isKnownModelId, modelCatalog } from "./llm";
 import { redactMessages } from "./messageEmit";
@@ -642,6 +643,69 @@ api.post("/canarycode/chat", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("[canarycode] failed:", err);
     if (!res.headersSent) res.status(500).json({ error: "CanaryCode is unavailable right now." });
+  }
+});
+
+/** Gate a CanaryCode sub-route on staff; returns false (and responds) if not. */
+async function requireStaff(req: Request, res: Response): Promise<boolean> {
+  const scope = (req as AuthedRequest).scope;
+  if (!(await users.isStaff(scope.realUserId))) {
+    res.status(403).json({ error: "CanaryCode is available to Orchard Robotics staff only." });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Interactive read-only SQL for CanaryCode's in-chat SQL editor. Runs the SAME
+ * triple-guarded read-only query the `db_query_readonly` tool uses (SELECT-only,
+ * hard read-only transaction, statement timeout), so the editor's Run button is
+ * exactly as safe as the agent's tool. Staff only.
+ */
+api.post("/canarycode/db/query", requireAuth, async (req, res) => {
+  if (!(await requireStaff(req, res))) return;
+  if (!fruitscopeDbConfigured()) {
+    res.json({ error: "The FruitScope database integration isn't configured yet." });
+    return;
+  }
+  const body = (req.body ?? {}) as { sql?: unknown; database?: unknown; limit?: unknown };
+  if (typeof body.sql !== "string" || !body.sql.trim()) {
+    res.status(400).json({ error: "Provide a SQL query." });
+    return;
+  }
+  const database = typeof body.database === "string" ? body.database : "";
+  const limit =
+    typeof body.limit === "number" && Number.isFinite(body.limit)
+      ? Math.min(1000, Math.max(1, Math.floor(body.limit)))
+      : 200;
+  const startedAt = Date.now();
+  try {
+    const result = await runReadOnlyQuery(body.sql, database, limit);
+    res.json({ ...result, ms: Date.now() - startedAt });
+  } catch (e) {
+    res.json({ error: e instanceof Error ? e.message : "Query failed", ms: Date.now() - startedAt });
+  }
+});
+
+/** List databases on the shared instance, for the SQL editor's database picker. */
+api.get("/canarycode/db/databases", requireAuth, async (req, res) => {
+  if (!(await requireStaff(req, res))) return;
+  if (!fruitscopeDbConfigured()) {
+    res.json({ databases: [] });
+    return;
+  }
+  try {
+    const result = await runReadOnlyQuery(
+      "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
+      "postgres",
+      500,
+    );
+    const databases = result.rows
+      .map((r) => (r as { datname?: string }).datname)
+      .filter((n): n is string => typeof n === "string");
+    res.json({ databases });
+  } catch (e) {
+    res.json({ databases: [], error: e instanceof Error ? e.message : "Failed to list databases" });
   }
 });
 

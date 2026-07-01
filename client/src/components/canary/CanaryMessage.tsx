@@ -1,8 +1,15 @@
 import { Brain, ChevronRight, FileText, Link2, ListChecks, Quote, Sparkles, Wrench } from "lucide-react";
+import { lazy, Suspense } from "react";
 
+import type { SqlQueryResult } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { CanaryAvatar } from "./CanaryAvatar";
 import { Markdown } from "./Markdown";
+
+// The SQL IDE pulls in CodeMirror — load it only when a SQL tool card renders.
+const SqlToolCard = lazy(() =>
+  import("./SqlToolCard").then((m) => ({ default: m.SqlToolCard })),
+);
 
 /** A loose view of an AI-SDK UIMessage part — we render every type we see. */
 export interface UIPart {
@@ -100,6 +107,20 @@ function Part({ part, showDebug }: { part: UIPart; showDebug: boolean }) {
 
   if (type.startsWith("tool-") || type === "dynamic-tool") {
     const name = part.toolName ?? (type.startsWith("tool-") ? type.slice("tool-".length) : "tool");
+    // The read-only DB tool gets a full in-chat SQL IDE (editor + console).
+    if (name === "db_query_readonly") {
+      return (
+        <Suspense
+          fallback={<div className="px-1 text-xs text-ink-faint">Loading SQL editor…</div>}
+        >
+          <SqlToolCard
+            input={part.input as { sql?: string; database?: string; limit?: number } | undefined}
+            output={part.output as SqlQueryResult | undefined}
+            state={part.state}
+          />
+        </Suspense>
+      );
+    }
     return <ToolPart name={name} state={part.state} input={part.input} output={part.output} errorText={part.errorText} />;
   }
 
