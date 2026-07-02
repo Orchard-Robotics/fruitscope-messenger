@@ -194,7 +194,10 @@ export function Sidebar({
                   <span className="grid size-6 shrink-0 place-items-center rounded-md bg-sky-500/15 text-sky-600">
                     <Code2 className="size-3.5" />
                   </span>
-                  <span className="flex-1 text-left">CanaryCode</span>
+                  <span className="min-w-0 flex-1 truncate text-left">CanaryCode</span>
+                  <span className="rounded bg-sun-500/15 px-1 text-[10px] font-bold uppercase tracking-wide text-sun-500">
+                    AI
+                  </span>
                 </button>
               </li>
             )}

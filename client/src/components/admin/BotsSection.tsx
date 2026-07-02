@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { AdminBot, ModelCatalog, Orchard } from "@shared/index";
 import { rest } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { useChatStore } from "@/store/store";
 import { Avatar } from "../Avatar";
 
 const errText = (e: unknown): string => (e instanceof Error ? e.message : "Something went wrong.");
@@ -134,8 +135,13 @@ function BotEditor({
   onDeleted?: () => void;
 }) {
   const isNew = !bot;
+  // Default a new bot to the workspace you're currently in (matches intent), not
+  // just the first workspace in the list.
+  const currentOrchardId = useChatStore((s) => s.orchard?.id);
   const [name, setName] = useState(bot?.displayName ?? "");
-  const [orchardId, setOrchardId] = useState(bot?.orchard?.id ?? workspaces[0]?.id ?? "");
+  const [orchardId, setOrchardId] = useState(
+    bot?.orchard?.id ?? currentOrchardId ?? workspaces[0]?.id ?? "",
+  );
   const [model, setModel] = useState(bot?.model || catalog.defaultModelId);
   const [systemPrompt, setSystemPrompt] = useState(bot?.systemPrompt ?? "");
   const [busy, setBusy] = useState(false);
@@ -157,6 +163,11 @@ function BotEditor({
           model,
           systemPrompt: systemPrompt.trim(),
         });
+        // Show it instantly in the sidebar when it belongs to the workspace we're
+        // viewing — independent of the socket broadcast (which covers everyone else).
+        if (orchardId === useChatStore.getState().orchard?.id) {
+          useChatStore.getState().upsertUser(created);
+        }
         onSaved(created.id);
       } else {
         const updated = await rest.updateBot(bot.id, {

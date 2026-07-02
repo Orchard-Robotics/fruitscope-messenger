@@ -474,6 +474,14 @@ export const CANARY = {
   hue: 47,
 } as const;
 
+// Once we've ensured a bot's user row + a given orchard's membership in this
+// process, we don't need to re-do those writes on every bootstrap — they're
+// idempotent and the rows persist. This keeps page loads off the write path.
+const canaryEnsuredOrchards = new Set<ID>();
+let canaryUserEnsured = false;
+const canaryCodeEnsuredOrchards = new Set<ID>();
+let canaryCodeUserEnsured = false;
+
 export const canary = {
   /** Find-or-create the global Canary bot user (idempotent; call on boot). */
   ensureUser: async (): Promise<User> => {
@@ -500,8 +508,13 @@ export const canary = {
    * bootstrapped, so the bot is global without a one-shot backfill.
    */
   ensureMembership: async (orchardId: ID): Promise<void> => {
-    await canary.ensureUser();
+    if (canaryEnsuredOrchards.has(orchardId)) return;
+    if (!canaryUserEnsured) {
+      await canary.ensureUser();
+      canaryUserEnsured = true;
+    }
     await orchards.ensureMembership(orchardId, CANARY.id);
+    canaryEnsuredOrchards.add(orchardId);
   },
 };
 
@@ -543,8 +556,13 @@ export const canaryCode = {
   /** Ensure CanaryCode is a member of an orchard — only ever called for the OR
    *  workspace, so it stays Orchard-Robotics-only. */
   ensureMembership: async (orchardId: ID): Promise<void> => {
-    await canaryCode.ensureUser();
+    if (canaryCodeEnsuredOrchards.has(orchardId)) return;
+    if (!canaryCodeUserEnsured) {
+      await canaryCode.ensureUser();
+      canaryCodeUserEnsured = true;
+    }
     await orchards.ensureMembership(orchardId, CANARYCODE.id);
+    canaryCodeEnsuredOrchards.add(orchardId);
   },
 };
 
