@@ -64,7 +64,12 @@ export function App() {
       const ch = st.activeChannelId;
       if (ch && !st.threadsOpen) {
         st.markChannelRead(ch);
-        chat.read(ch);
+        // Best-effort server sync; the socket may be mid-reconnect.
+        try {
+          chat.read(ch);
+        } catch {
+          /* ignore — the next resync/read reconciles */
+        }
       }
     };
     window.addEventListener("focus", onFocus);
