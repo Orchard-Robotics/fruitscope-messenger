@@ -25,6 +25,19 @@ export default defineConfig(({ mode }) => ({
       compress: { passes: 3, drop_console: true, drop_debugger: true },
       format: { comments: false },
     },
+    rollupOptions: {
+      output: {
+        // Peel React (large + very stable) into its own chunk: it downloads in
+        // parallel with the app chunk on first paint and stays cached across the
+        // frequent deploys (a release only busts the app chunk, not React).
+        manualChunks(id) {
+          if (id.includes("node_modules") && /[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
+            return "react-vendor";
+          }
+          return undefined;
+        },
+      },
+    },
   },
   esbuild: mode === "production" ? { drop: ["console", "debugger"] } : {},
   server: {

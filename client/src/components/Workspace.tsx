@@ -12,15 +12,19 @@ import { ChannelHeader } from "./ChannelHeader";
 import { Composer } from "./Composer";
 import { MasqueradeBanner } from "./MasqueradeBanner";
 import { MessageList } from "./MessageList";
-import { AdminConsole } from "./admin/AdminConsole";
 
-// Code-split: the Canary panel pulls in the AI SDK + markdown renderer, which
-// shouldn't weigh down the initial chat bundle. It loads when first opened.
+// Code-split: the Canary panel pulls in the AI SDK + markdown renderer, and the
+// Admin console pulls in the whole admin surface (member/bot/workspace/convo
+// management) — neither should weigh down the initial chat bundle, so both load
+// only when first opened.
 const CanaryPanel = lazyWithReload(() =>
   import("./canary/CanaryPanel").then((m) => ({ default: m.CanaryPanel })),
 );
 const CanaryCodePanel = lazyWithReload(() =>
   import("./canary/CanaryCodePanel").then((m) => ({ default: m.CanaryCodePanel })),
+);
+const AdminConsole = lazyWithReload(() =>
+  import("./admin/AdminConsole").then((m) => ({ default: m.AdminConsole })),
 );
 import { PreferencesModal } from "./PreferencesModal";
 import { ProfileModal } from "./ProfileModal";
@@ -136,7 +140,11 @@ export function Workspace() {
         }}
       />
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
-      <AdminConsole open={usersOpen} onClose={() => setUsersOpen(false)} />
+      {usersOpen && (
+        <Suspense fallback={null}>
+          <AdminConsole open onClose={() => setUsersOpen(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }
