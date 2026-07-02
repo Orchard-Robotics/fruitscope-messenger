@@ -14,6 +14,7 @@ import type {
   SyncReport,
   ThreadMention,
   User,
+  UserProfile,
 } from "@shared/index";
 
 /** Full-page navigation target that starts the "Sign in with FruitScope" flow. */
@@ -69,6 +70,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const rest = {
   me: () => request<User>("/me"),
   bootstrap: () => request<Bootstrap>("/bootstrap"),
+  /** A user's full public profile (Slack-style profile card). */
+  userProfile: (id: string) => request<UserProfile>(`/users/${encodeURIComponent(id)}/profile`),
   /** Server-side message search across the orchard's accessible channels. */
   search: (q: string) =>
     request<{ messages: Message[] }>(`/search?q=${encodeURIComponent(q)}`),

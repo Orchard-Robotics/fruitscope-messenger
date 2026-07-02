@@ -19,6 +19,7 @@ import type {
   Orchard,
   Reaction,
   User,
+  UserProfile,
   UserStatus,
 } from "@shared/index";
 import { superAdminOrchard } from "./env";
@@ -259,6 +260,20 @@ export const users = {
   byId: async (id: ID): Promise<User | undefined> => {
     const row = await prisma.user.findUnique({ where: { id } });
     return row ? mapUser(row) : undefined;
+  },
+
+  /** A user's full public profile (for the Slack-style profile card). */
+  profile: async (id: ID): Promise<UserProfile | null> => {
+    const row = await prisma.user.findUnique({ where: { id } });
+    if (!row) return null;
+    const orch = await orchards.forUser(id);
+    return {
+      ...mapUser(row),
+      isSuperAdmin: row.isSuperAdmin,
+      email: row.email ?? null,
+      botModel: row.botModel ?? null,
+      orchards: orch.map((o) => ({ code: o.code, name: o.name })),
+    };
   },
 
   isSuperAdmin: async (id: ID): Promise<boolean> =>

@@ -220,6 +220,16 @@ api.get("/me", requireAuth, async (req, res) => {
   res.json(user);
 });
 
+/** A user's full public profile — powers the Slack-style profile card. */
+api.get("/users/:id/profile", requireAuth, async (req, res) => {
+  const profile = await users.profile(req.params.id ?? "");
+  if (!profile) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.json(profile);
+});
+
 /* ------------------------------------------------------------------ */
 /* Profile picture                                                     */
 /* Server-side upload: validate → normalize (square 512 webp, EXIF     */

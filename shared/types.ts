@@ -299,6 +299,18 @@ export interface SyncReport {
  * by this (rather than a bare timestamp) avoids dropping/duplicating messages
  * that share a millisecond at a page boundary.
  */
+/** A user's full public profile (Slack-style profile card). Fetched on demand. */
+export interface UserProfile extends User {
+  /** Whether they're a workspace admin. */
+  isSuperAdmin: boolean;
+  /** Their email, if known. */
+  email: string | null;
+  /** For bots: the LLM model id they run under. */
+  botModel: string | null;
+  /** Workspaces this user belongs to. */
+  orchards: Array<{ code: string; name: string }>;
+}
+
 export interface MessageCursor {
   createdAt: Timestamp;
   id: ID;

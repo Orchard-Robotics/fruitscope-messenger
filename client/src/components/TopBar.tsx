@@ -5,6 +5,7 @@ import type { User } from "@shared/index";
 import { AccountMenu } from "./AccountMenu";
 import { Avatar } from "./Avatar";
 import { Logo } from "./Logo";
+import { NotificationBell } from "./NotificationBell";
 import { PresenceDot } from "./PresenceDot";
 
 /**
@@ -60,6 +61,8 @@ export function TopBar({
           </kbd>
         </button>
       </div>
+
+      <NotificationBell />
 
       <div className="relative shrink-0">
         <button
