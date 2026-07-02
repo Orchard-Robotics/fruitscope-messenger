@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { rest } from "@/lib/api";
 import { clearMessageLink, openMessageLink, readMessageLink } from "@/lib/messageLink";
-import { ensureNotificationPermission } from "@/lib/notifications";
-import { connectSocket, disconnectSocket } from "@/lib/socket";
-import { usePrefs } from "@/store/prefs";
+import { requestNotificationPermissionOnGesture } from "@/lib/notifications";
+import { chat, connectSocket, disconnectSocket } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
 import { Login } from "./components/Login";
 import { Logo } from "./components/Logo";
@@ -46,15 +45,35 @@ export function App() {
           void openMessageLink(deepLink.channelId, deepLink.messageId);
           clearMessageLink();
         }
-        // Ask for desktop-notification permission so @mentions can alert you
-        // (best-effort; if the browser defers it, the Preferences toggle re-asks).
-        if (usePrefs.getState().mentionNotifications) void ensureNotificationPermission();
+        // Arm desktop mention notifications on the user's first interaction —
+        // browsers ignore a permission request made on page load (no gesture).
+        requestNotificationPermissionOnGesture();
       } catch {
         disconnectSocket();
         store.setSession("anon");
       }
     })();
   }, [deepLink]);
+
+  // When the window regains focus on an already-open channel, clear its badges
+  // and tell the server they're read — so "away" mentions vanish on return.
+  useEffect(() => {
+    const onFocus = (): void => {
+      if (document.hidden) return;
+      const st = useChatStore.getState();
+      const ch = st.activeChannelId;
+      if (ch && !st.threadsOpen) {
+        st.markChannelRead(ch);
+        chat.read(ch);
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, []);
 
   if (session === "loading") return <Splash />;
   if (session === "anon") return <Login error={loginError} />;

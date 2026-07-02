@@ -12,6 +12,7 @@ import type {
   ServerToClientEvents,
 } from "@shared/index";
 import { rest } from "@/lib/api";
+import { contentMentions } from "@/lib/mentions";
 import { maybeNotifyMention } from "@/lib/notifications";
 import { handleCanaryReauth } from "@/lib/reauth";
 import { useChatStore } from "@/store/store";
@@ -44,8 +45,25 @@ export function connectSocket(): ChatSocket {
   socket.on("disconnect", () => store().setConnected(false));
 
   socket.on("message:new", (m) => {
-    store().addMessage(m);
+    const s = store();
+    s.addMessage(m);
     maybeNotifyMention(m);
+    // If I'm actively looking at this channel (open + focused) and it @mentions
+    // me, mark it read server-side so a later reload doesn't resurface a badge
+    // I've already seen. (When I'm away, we deliberately leave it unread.)
+    const me = s.me;
+    if (
+      me &&
+      m.authorId !== me.id &&
+      s.activeChannelId === m.channelId &&
+      !s.threadsOpen &&
+      typeof document !== "undefined" &&
+      !document.hidden &&
+      document.hasFocus() &&
+      contentMentions(m.content, me.id)
+    ) {
+      chat.read(m.channelId);
+    }
   });
   socket.on("message:updated", (m) => store().updateMessage(m));
   socket.on("channel:created", (c) => store().upsertChannel(c));

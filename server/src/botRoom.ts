@@ -34,10 +34,12 @@ interface Candidate {
 
 /**
  * Build the set of mention needles for a roster. Usernames (always unique) map
- * directly; display names — and display names with spaces removed — are added
- * too, but only when unambiguous (a name shared by two people, or already a
- * username, is skipped so we never tag the wrong person). Longest needles first
- * so "@Brian Yeh" beats "@Brian".
+ * directly; display names, the spaceless form, AND individual name parts (first
+ * name, last name) are added too — but only when unambiguous (a needle shared by
+ * two people, or already a username, is dropped so we never tag the wrong
+ * person). This makes "@Brian Yeh", "@brianyeh", and "@Brian" all resolve to the
+ * same person when there's only one Brian. Longest needles first so the fullest
+ * match wins ("@Brian Yeh" beats "@Brian").
  */
 function buildCandidates(members: User[]): Candidate[] {
   const usernames = new Map<string, string>();
@@ -54,8 +56,13 @@ function buildCandidates(members: User[]): Candidate[] {
     names.set(n, set);
   };
   for (const m of members) {
-    addName(m.displayName, m.id);
-    addName(m.displayName.replace(/\s+/g, ""), m.id);
+    const dn = m.displayName.trim();
+    addName(dn, m.id);
+    addName(dn.replace(/\s+/g, ""), m.id);
+    // Individual name parts (>=3 chars, so "Jo"/initials don't over-match).
+    for (const part of dn.split(/\s+/)) {
+      if (part.length >= 3) addName(part, m.id);
+    }
   }
 
   const list: Candidate[] = [];
@@ -84,7 +91,9 @@ export function encodeMentions(text: string, members: User[]): string {
   let i = 0;
   while (i < text.length) {
     const c = text[i] as string;
-    if (c === "@" && !isWordChar(text[i - 1])) {
+    // A mention starts at an "@" on a word boundary — but not inside an existing
+    // "<@id>" token (preceded by "<") and not inside an email (preceded by a word char).
+    if (c === "@" && !isWordChar(text[i - 1]) && text[i - 1] !== "<") {
       const rest = text.slice(i + 1);
       const restLower = rest.toLowerCase();
       const hit = candidates.find(

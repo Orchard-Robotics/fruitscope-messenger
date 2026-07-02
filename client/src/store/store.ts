@@ -99,12 +99,24 @@ interface ChatState {
 
   /* ui actions */
   setActiveChannel: (channelId: ID) => void;
+  /** Clear a channel's unread + mention counts (e.g. when the window refocuses
+   *  on an already-open channel). Does not touch the server; the caller emits
+   *  `channel:read` for that. */
+  markChannelRead: (channelId: ID) => void;
   openThreads: () => void;
   setReauthNeeded: (v: boolean) => void;
 }
 
 /** Max messages kept in memory per channel — bounds the store + DOM. */
 const MEMORY_CAP = 200;
+
+/** Whether this browser window is focused. When it's not, you're "away", so an
+ *  @mention should still badge even in the channel you happen to have open —
+ *  matching Slack (and the push-notification gate, which also checks focus). */
+const windowFocused = (): boolean =>
+  typeof document === "undefined" || typeof document.hasFocus !== "function"
+    ? true
+    : document.hasFocus();
 
 const byChrono = (a: Message, b: Message): number =>
   a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -225,7 +237,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const unread = counts
           ? { ...s.unread, [message.channelId]: (s.unread[message.channelId] ?? 0) + 1 }
           : s.unread;
-        const mentionsMe = counts && s.me ? contentMentions(message.content, s.me.id) : false;
+        // A mention badges unless it's yours or you're actively looking at that
+        // channel (its tab open AND the window focused) — so being "away" counts.
+        const looking = isActiveEarly && windowFocused();
+        const mentionsMe =
+          !mineEarly && !looking && s.me ? contentMentions(message.content, s.me.id) : false;
         const mentions = mentionsMe
           ? { ...s.mentions, [message.channelId]: (s.mentions[message.channelId] ?? 0) + 1 }
           : s.mentions;
@@ -250,9 +266,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const unread = countsAsUnread
         ? { ...s.unread, [message.channelId]: (s.unread[message.channelId] ?? 0) + 1 }
         : s.unread;
-      // Flag the channel if this unread message @mentions me (Slack-style).
-      const mentionsMe =
-        countsAsUnread && s.me ? contentMentions(message.content, s.me.id) : false;
+      // Badge an @mention unless it's mine or I'm actively looking at this
+      // channel (tab open AND window focused). When I'm "away" (window blurred),
+      // a mention in the open channel still badges — like Slack.
+      const looking = isActive && windowFocused();
+      const mentionsMe = !mine && !looking && s.me ? contentMentions(message.content, s.me.id) : false;
       const mentions = mentionsMe
         ? { ...s.mentions, [message.channelId]: (s.mentions[message.channelId] ?? 0) + 1 }
         : s.mentions;
@@ -331,6 +349,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((s) => ({ botState: { ...s.botState, [channelId]: { active, paused } } })),
 
   openThreads: () => set({ threadsOpen: true }),
+
+  markChannelRead: (channelId) =>
+    set((s) => ({
+      unread: { ...s.unread, [channelId]: 0 },
+      mentions: { ...s.mentions, [channelId]: 0 },
+    })),
 
   setReauthNeeded: (reauthNeeded) => set({ reauthNeeded }),
 

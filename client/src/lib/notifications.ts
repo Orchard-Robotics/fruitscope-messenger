@@ -22,6 +22,26 @@ export async function ensureNotificationPermission(): Promise<boolean> {
 }
 
 /**
+ * Request notification permission on the user's FIRST interaction. Browsers
+ * (Safari always, Firefox, and increasingly Chrome) only show the permission
+ * prompt in response to a user gesture — a request fired on page load is
+ * silently ignored, which is why mention notifications never armed. This waits
+ * for the first click/keypress, then prompts once.
+ */
+export function requestNotificationPermissionOnGesture(): void {
+  if (!supported() || Notification.permission !== "default") return;
+  if (!usePrefs.getState().mentionNotifications) return;
+  const onGesture = (): void => {
+    window.removeEventListener("pointerdown", onGesture);
+    window.removeEventListener("keydown", onGesture);
+    // Re-check: the user may have toggled the pref off before interacting.
+    if (usePrefs.getState().mentionNotifications) void ensureNotificationPermission();
+  };
+  window.addEventListener("pointerdown", onGesture);
+  window.addEventListener("keydown", onGesture);
+}
+
+/**
  * On a new message, fire a Slack-style desktop notification if it @mentions you
  * and you're not already looking at it — same info Slack shows: who, where, and
  * the message text; clicking jumps to it.
@@ -35,9 +55,12 @@ export function maybeNotifyMention(message: Message): void {
   if (!me || message.authorId === me.id) return;
   if (!contentMentions(message.content, me.id)) return;
 
-  // Don't notify if you're actively looking at that conversation.
-  const looking =
-    !document.hidden && !s.threadsOpen && s.activeChannelId === message.channelId;
+  // Don't notify only if you're actively looking at that conversation — the tab
+  // is visible AND the window is focused AND that channel is open. If you're on
+  // another app/window (unfocused) or another channel, you still get notified.
+  const focused =
+    !document.hidden && (typeof document.hasFocus === "function" ? document.hasFocus() : true);
+  const looking = focused && !s.threadsOpen && s.activeChannelId === message.channelId;
   if (looking) return;
 
   const author = s.users[message.authorId];

@@ -12,6 +12,7 @@ import type {
 import { REACTION_EMOJI } from "@shared/index";
 import { resolveToken } from "./auth";
 import { dispatchBotReplies } from "./botAgent";
+import { encodeMentions } from "./botRoom";
 import { stopBots } from "./botControl";
 import { respondAsCanary } from "./canaryAgent";
 import { takeCanaryReauth } from "./canaryReauth";
@@ -247,7 +248,17 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
       return ack({ ok: false, error: "You can't post here" });
     }
 
-    const message = await messages.create(channel.id, userId, parsed.data.content);
+    // Encode @mentions server-side as a safety net: the client composer already
+    // turns picked @handles into <@id> tokens, but this also catches a typed
+    // "@Brian Yeh" (display name) the composer left as plain text — so a mention
+    // reliably becomes a real, notifying token no matter how it was written. Only
+    // pay the roster lookup when there's a raw "@name" that isn't already a token.
+    const raw = parsed.data.content;
+    const hasRawMention = /(^|[^<A-Za-z0-9_.-])@[A-Za-z]/.test(raw);
+    const content = hasRawMention
+      ? encodeMentions(raw, await orchards.members(orchardId))
+      : raw;
+    const message = await messages.create(channel.id, userId, content);
     io.to(chanRoom(channel.id)).emit("message:new", message);
     stopTyping(io, channel.id, userId);
     ack({ ok: true, data: message });
