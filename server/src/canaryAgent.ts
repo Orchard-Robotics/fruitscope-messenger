@@ -85,13 +85,22 @@ export async function respondAsCanary(io: IO, channelId: ID, senderId: ID): Prom
     for (const m of page.messages) {
       lines.push(`${await nameOf(m.authorId)}: ${await withNames(m.content, nameOf)}`);
     }
+    // The message that triggered you is the most recent one — name who sent it and
+    // quote it so you know exactly who to answer and what they asked.
+    const trigger = page.messages[page.messages.length - 1];
+    const triggerLine = trigger
+      ? `You were just @mentioned by ${await nameOf(trigger.authorId)}, in this message:\n` +
+        `"${await withNames(trigger.content, nameOf)}"\n` +
+        `Reply to them (and @mention ${await nameOf(trigger.authorId)} so they see it).\n\n`
+      : "";
 
     const prompt =
       "You are Canary, the FruitScope AI farm assistant, and you've been @mentioned in a team chat. " +
-      "Continue the conversation: answer the latest message helpfully and concisely as a knowledgeable " +
+      "Continue the conversation: answer helpfully and concisely as a knowledgeable " +
       "farm / agronomy assistant, in a friendly chat tone. Don't repeat the question or add a greeting.\n\n" +
       `People and bots in this workspace:\n${roster.text || "- (just you)"}\n\n` +
       `${mentionGuidance()}\n\n` +
+      triggerLine +
       `Recent conversation:\n${lines.join("\n")}\n\nYour reply:`;
 
     const ctx = await fs.prepareContext(jwt, orchardCode, { general_mode: false, canary_mode: 5 });

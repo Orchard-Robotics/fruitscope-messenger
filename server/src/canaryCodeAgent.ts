@@ -95,13 +95,21 @@ export async function respondAsCanaryCode(io: IO, channelId: ID, senderId: ID): 
     for (const m of page.messages) {
       lines.push(`${await nameOf(m.authorId)}: ${await withNames(m.content, nameOf)}`);
     }
+    // Name who @mentioned you and quote their message so you answer the right
+    // person about the right thing.
+    const trigger = page.messages[page.messages.length - 1];
+    const triggerLine = trigger
+      ? `You were just @mentioned by ${await nameOf(trigger.authorId)}, in this message:\n` +
+        `"${await withNames(trigger.content, nameOf)}"\n` +
+        `Reply to them (and @mention ${await nameOf(trigger.authorId)} so they see it).\n\n`
+      : "";
 
     const prompt =
-      "You've been @mentioned in a team chat channel. Answer the latest message helpfully and " +
-      "concisely, using your read-only tools when the question needs live data. Don't repeat the " +
-      "question or add a greeting.\n\n" +
+      "You've been @mentioned in a team chat channel. Answer helpfully and concisely, using your " +
+      "read-only tools when the question needs live data. Don't repeat the question or add a greeting.\n\n" +
       `People and bots in this workspace:\n${roster.text || "- (just you)"}\n\n` +
       `${mentionGuidance()}\n\n` +
+      triggerLine +
       `Recent conversation:\n${lines.join("\n")}\n\nYour reply:`;
 
     const result = await generateText({

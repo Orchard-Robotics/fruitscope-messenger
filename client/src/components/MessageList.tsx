@@ -60,9 +60,22 @@ export function MessageList({ channelId }: { channelId: ID }) {
     if (last.id !== lastId.current) {
       lastId.current = last.id;
       if (last.authorId === meId) {
-        virtuoso.current?.scrollToIndex({ index: "LAST", behavior: "smooth", align: "end" });
+        // Jump to the just-sent message. Retry across frames because the new row
+        // hasn't been measured yet on the first pass, so a single scroll lands
+        // short (its height isn't counted) — the retries settle on the real end.
+        const toBottom = (): void =>
+          virtuoso.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
+        toBottom();
+        requestAnimationFrame(toBottom);
+        const t1 = setTimeout(toBottom, 80);
+        const t2 = setTimeout(toBottom, 250);
+        return () => {
+          clearTimeout(t1);
+          clearTimeout(t2);
+        };
       }
     }
+    return;
   }, [messages, meId]);
 
   // Lazy first-page load when a channel is opened for the first time.

@@ -73,16 +73,25 @@ export async function respondAsBot(io: IO, channelId: ID, botId: ID): Promise<vo
     for (const m of page.messages) {
       lines.push(`${await nameOf(m.authorId)}: ${await withNames(m.content, nameOf)}`);
     }
+    // Name who @mentioned you and quote their message so you reply to the right
+    // person about the right thing.
+    const trigger = page.messages[page.messages.length - 1];
+    const triggerLine = trigger
+      ? `You were just @mentioned by ${await nameOf(trigger.authorId)}, in this message:\n` +
+        `"${await withNames(trigger.content, nameOf)}"\n` +
+        `Reply to them (and @mention ${await nameOf(trigger.authorId)} so they see it).\n\n`
+      : "";
 
     // The admin's system prompt stays authoritative as the system role; the chat
     // context (roster + transcript + mention rules) rides in the user turn.
     const system = cfg.systemPrompt.trim() || `You are ${cfg.displayName}, a helpful assistant.`;
     const prompt =
       `You are "${cfg.displayName}", a bot participating in a team chat. ` +
-      "Continue the conversation: reply to the latest message helpfully and concisely, staying in " +
+      "Continue the conversation: reply helpfully and concisely, staying in " +
       "character. Don't repeat the question or add a greeting.\n\n" +
       `People and bots in this workspace:\n${roster.text || "- (just you)"}\n\n` +
       `${mentionGuidance()}\n\n` +
+      triggerLine +
       `Recent conversation:\n${lines.join("\n")}\n\nYour reply:`;
 
     const reply = await llmComplete({ modelId: cfg.model, system, prompt, maxTokens: 1024 });
