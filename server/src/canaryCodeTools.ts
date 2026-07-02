@@ -20,6 +20,7 @@ import { z } from "zod";
 import { canaryCodeIntegrations as cfg } from "./env";
 import { fruitscopeDbConfigured, runReadOnlyQuery } from "./fruitscopeDb";
 import { getGithubInstallationToken, githubConfigured } from "./githubApp";
+import { LOG_ENVIRONMENTS, LOG_SERVICES, queryLogs } from "./logs";
 import { posthogConfigured, posthogQuery, type PosthogQueryResult } from "./posthog";
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -483,6 +484,53 @@ const db_query_readonly = tool({
 });
 
 /* ------------------------------------------------------------------ */
+/* Production logs (read-only)                                         */
+/* ------------------------------------------------------------------ */
+
+const logs_recent = tool({
+  description:
+    "Read recent production logs from Cloud Logging (read-only) for a FruitScope service. " +
+    `Services: ${LOG_SERVICES.join(", ")}. Use to investigate errors, crashes, or behavior in prod.`,
+  inputSchema: z.object({
+    service: z
+      .enum(LOG_SERVICES as [string, ...string[]])
+      .optional()
+      .describe("Which service's logs (omit for all services in the namespace)."),
+    env: z
+      .enum(LOG_ENVIRONMENTS as [string, ...string[]])
+      .optional()
+      .describe("Environment (default prod)."),
+    severity: z
+      .enum(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
+      .optional()
+      .describe("Minimum severity (default WARNING)."),
+    hours: z.number().int().min(1).max(168).optional().describe("Look-back window in hours (default 1)."),
+    contains: z.string().optional().describe("Only entries containing this text."),
+    limit: z.number().int().min(1).max(300).optional().describe("Max entries (default 100)."),
+  }),
+  execute: async ({ service, env, severity, hours, contains, limit }) => {
+    try {
+      const entries = await queryLogs({
+        ...(service ? { service } : {}),
+        ...(env ? { env } : {}),
+        severity: severity ?? "WARNING",
+        hours: hours ?? 1,
+        ...(contains ? { contains } : {}),
+        limit: limit ?? 100,
+      });
+      return { env: env ?? "prod", service: service ?? "all", count: entries.length, entries };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Log query failed";
+      return {
+        error: /permission|denied|forbidden/i.test(msg)
+          ? "Cloud Logging access isn't granted yet (needs roles/logging.viewer on the runtime service account)."
+          : msg,
+      };
+    }
+  },
+});
+
+/* ------------------------------------------------------------------ */
 
 /** The read-only tool set handed to CanaryCode's Opus agent. */
 export const canaryCodeTools = {
@@ -492,4 +540,5 @@ export const canaryCodeTools = {
   linear_search,
   errors_recent,
   db_query_readonly,
+  logs_recent,
 };

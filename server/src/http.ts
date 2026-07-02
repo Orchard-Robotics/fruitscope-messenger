@@ -31,6 +31,7 @@ import { beginLogin, completeLogin, decodeTx, encodeTx } from "./oidc";
 import { broadcastUserUpdate, resumePendingCanary } from "./socket";
 import { canaryCodeTools } from "./canaryCodeTools";
 import { fruitscopeDbConfigured, runReadOnlyQuery } from "./fruitscopeDb";
+import { queryLogs } from "./logs";
 import { FruitscopeApiError } from "./fruitscope";
 import { DEFAULT_MODEL_ID, isKnownModelId, modelCatalog } from "./llm";
 import { redactMessages } from "./messageEmit";
@@ -609,7 +610,8 @@ const CANARYCODE_SYSTEM = [
   "- linear_search: search Linear issues by text.",
   "- errors_recent: recent production errors from PostHog (exceptions, or backend HTTP 4xx/5xx).",
   "- db_query_readonly: run a read-only SELECT against the shared FruitScope DB (per-orchard databases).",
-  "Use them whenever a question needs live PR, CI, ticket, production-error, or database state — don't guess when",
+  "- logs_recent: read recent production logs (Cloud Logging) for a FruitScope service.",
+  "Use them whenever a question needs live PR, CI, ticket, production-error, database, or log state — don't guess when",
   "you can look. Every tool is strictly read-only: you cannot merge, comment, deploy,",
   "create, or change anything, so never claim you did. If a tool reports it isn't",
   "configured, tell the user the integration needs a token and answer from what you know.",
@@ -687,6 +689,41 @@ api.post("/canarycode/db/query", requireAuth, async (req, res) => {
   }
 });
 
+/** Interactive read-only log query for CanaryCode's in-chat log viewer. Staff only. */
+api.post("/canarycode/logs/query", requireAuth, async (req, res) => {
+  if (!(await requireStaff(req, res))) return;
+  const b = (req.body ?? {}) as {
+    service?: unknown;
+    env?: unknown;
+    severity?: unknown;
+    hours?: unknown;
+    contains?: unknown;
+    limit?: unknown;
+  };
+  const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
+  const num = (v: unknown): number | undefined =>
+    typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  try {
+    const entries = await queryLogs({
+      ...(str(b.service) ? { service: str(b.service) as string } : {}),
+      ...(str(b.env) ? { env: str(b.env) as string } : {}),
+      severity: str(b.severity) ?? "WARNING",
+      hours: num(b.hours) ?? 1,
+      ...(str(b.contains) ? { contains: str(b.contains) as string } : {}),
+      limit: num(b.limit) ?? 150,
+    });
+    res.json({ entries });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Log query failed";
+    res.json({
+      entries: [],
+      error: /permission|denied|forbidden/i.test(msg)
+        ? "Cloud Logging access isn't granted yet (needs roles/logging.viewer on the runtime service account)."
+        : msg,
+    });
+  }
+});
+
 /** List databases on the shared instance, for the SQL editor's database picker. */
 api.get("/canarycode/db/databases", requireAuth, async (req, res) => {
   if (!(await requireStaff(req, res))) return;
@@ -698,7 +735,7 @@ api.get("/canarycode/db/databases", requireAuth, async (req, res) => {
     const result = await runReadOnlyQuery(
       "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
       "postgres",
-      500,
+      2000,
     );
     const databases = result.rows
       .map((r) => (r as { datname?: string }).datname)

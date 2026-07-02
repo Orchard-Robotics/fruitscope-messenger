@@ -17,6 +17,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.91",
     "@earendil-works/pi-ai": "^0.79.4",
+    "@google-cloud/logging": "^11.2.3",
     "@google-cloud/storage": "^7.21.0",
     "@prisma/client": "^6.2.1",
     "@types/pg": "^8.20.0",

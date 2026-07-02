@@ -10,6 +10,9 @@ import { Markdown } from "./Markdown";
 const SqlToolCard = lazy(() =>
   import("./SqlToolCard").then((m) => ({ default: m.SqlToolCard })),
 );
+const LogToolCard = lazy(() =>
+  import("./LogToolCard").then((m) => ({ default: m.LogToolCard })),
+);
 
 /** A loose view of an AI-SDK UIMessage part — we render every type we see. */
 export interface UIPart {
@@ -116,6 +119,22 @@ function Part({ part, showDebug }: { part: UIPart; showDebug: boolean }) {
           <SqlToolCard
             input={part.input as { sql?: string; database?: string; limit?: number } | undefined}
             output={part.output as SqlQueryResult | undefined}
+            state={part.state}
+          />
+        </Suspense>
+      );
+    }
+    // The logs tool gets a full in-chat log viewer (filter / search / refresh).
+    if (name === "logs_recent") {
+      return (
+        <Suspense fallback={<div className="px-1 text-xs text-ink-faint">Loading log viewer…</div>}>
+          <LogToolCard
+            input={
+              part.input as
+                | { service?: string; env?: string; severity?: string; hours?: number }
+                | undefined
+            }
+            output={part.output as never}
             state={part.state}
           />
         </Suspense>

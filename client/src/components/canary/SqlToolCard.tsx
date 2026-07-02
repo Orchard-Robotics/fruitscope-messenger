@@ -1,15 +1,7 @@
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import CodeMirror from "@uiw/react-codemirror";
-import {
-  AlertTriangle,
-  Check,
-  ChevronDown,
-  Database,
-  Loader2,
-  Pencil,
-  Play,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Check, Database, Loader2, Pencil, Play } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 import { rest, type SqlQueryResult } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -50,6 +42,7 @@ export function SqlToolCard({
   const [result, setResult] = useState<SqlQueryResult | undefined>(output);
   const [running, setRunning] = useState(false);
   const [databases, setDatabases] = useState<string[]>([]);
+  const dbListId = useId();
 
   // The tool's streamed input/output can arrive after first render.
   useEffect(() => {
@@ -99,22 +92,21 @@ export function SqlToolCard({
           SQL
         </span>
 
-        {/* Database picker */}
-        <label className="relative inline-flex items-center">
-          <select
-            value={database}
-            onChange={(e) => setDatabase(e.target.value)}
-            className="appearance-none rounded-md border border-line bg-surface py-1 pl-2 pr-6 text-xs font-medium text-ink outline-none focus:border-brand-400"
-            title="Database"
-          >
-            {[database, ...databases.filter((d) => d !== database)].map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-1.5 size-3.5 text-ink-faint" />
-        </label>
+        {/* Database picker — typeahead over all databases (there are hundreds). */}
+        <input
+          list={dbListId}
+          value={database}
+          onChange={(e) => setDatabase(e.target.value)}
+          spellCheck={false}
+          placeholder="database"
+          title="Database (type to search)"
+          className="w-36 rounded-md border border-line bg-surface px-2 py-1 text-xs font-medium text-ink outline-none focus:border-brand-400"
+        />
+        <datalist id={dbListId}>
+          {databases.map((d) => (
+            <option key={d} value={d} />
+          ))}
+        </datalist>
 
         <div className="ml-auto flex items-center gap-1.5">
           <button

@@ -18,6 +18,24 @@ import type {
 /** Full-page navigation target that starts the "Sign in with FruitScope" flow. */
 export const LOGIN_URL = "/api/auth/login";
 
+/** One production log entry from CanaryCode's logs tool / viewer. */
+export interface LogEntry {
+  timestamp: string;
+  severity: string;
+  service: string;
+  message: string;
+}
+
+/** Filters for a read-only log query. */
+export interface LogQuery {
+  service?: string;
+  env?: string;
+  severity?: string;
+  hours?: number;
+  contains?: string;
+  limit?: number;
+}
+
 /** Result of a read-only SQL query from CanaryCode's DB tool / editor. */
 export interface SqlQueryResult {
   database?: string;
@@ -157,6 +175,12 @@ export const rest = {
     }),
   /** List databases on the shared instance for the SQL editor's picker. */
   dbDatabases: () => request<{ databases: string[]; error?: string }>("/canarycode/db/databases"),
+  /** Query recent production logs (read-only) with filters, for the log viewer. */
+  logsQuery: (opts: LogQuery) =>
+    request<{ entries: LogEntry[]; error?: string }>("/canarycode/logs/query", {
+      method: "POST",
+      body: JSON.stringify(opts),
+    }),
 
   /* ---- admin: conversation monitor ---- */
   /** Every conversation across all workspaces (newest activity first). */
