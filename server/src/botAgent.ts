@@ -9,11 +9,12 @@ import type {
   SocketData,
 } from "@shared/index";
 import { respondAsCanary } from "./canaryAgent";
+import { respondAsCanaryCode } from "./canaryCodeAgent";
 import { botsPaused, canBotReplyTo, chainInitiator, recordBotTurn, resetBots } from "./botControl";
 import { buildRoster, encodeMentions, mentionGuidance } from "./botRoom";
 import { llmComplete } from "./llm";
 import { emitMessage } from "./messageEmit";
-import { bots, CANARY, channels, messages, users } from "./store";
+import { bots, CANARY, CANARYCODE, channels, messages, users } from "./store";
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
 
@@ -130,6 +131,8 @@ export async function afterBotPost(io: IO, channel: Channel, message: Message): 
     if (!canBotReplyTo(channel.id, botId, message.authorId)) continue;
     if (botId === CANARY.id) {
       if (initiator) void respondAsCanary(io, channel.id, initiator);
+    } else if (botId === CANARYCODE.id) {
+      if (initiator) void respondAsCanaryCode(io, channel.id, initiator);
     } else {
       void respondAsBot(io, channel.id, botId);
     }
@@ -168,6 +171,7 @@ export async function dispatchBotReplies(
 
   for (const botId of botIds) {
     if (botId === CANARY.id) void respondAsCanary(io, channel.id, senderId);
+    else if (botId === CANARYCODE.id) void respondAsCanaryCode(io, channel.id, senderId);
     else void respondAsBot(io, channel.id, botId);
   }
 }
