@@ -28,7 +28,8 @@ import {
 } from "./env";
 import type { FruitscopeIdentity } from "./oidc";
 import { beginLogin, completeLogin, decodeTx, encodeTx } from "./oidc";
-import { broadcastUserUpdate, resumePendingCanary } from "./socket";
+import { broadcastChannelCreated, broadcastUserUpdate, resumePendingCanary } from "./socket";
+import { generateBotTeam } from "./botTeamGen";
 import { CANARYCODE_SYSTEM } from "./canaryCodeAgent";
 import { canaryCodeTools } from "./canaryCodeTools";
 import { fruitscopeDbConfigured, runReadOnlyQuery } from "./fruitscopeDb";
@@ -36,7 +37,7 @@ import { queryLogs } from "./logs";
 import { FruitscopeApiError } from "./fruitscope";
 import { DEFAULT_MODEL_ID, isKnownModelId, modelCatalog } from "./llm";
 import { redactMessages } from "./messageEmit";
-import { bootstrap, bots, channels, mentions, messages, orchards, users } from "./store";
+import { bootstrap, botGroups, bots, channels, mentions, messages, orchards, users } from "./store";
 import { listSyncOrchards, previewOrchard, syncOrchard } from "./sync";
 import { deleteObject, uploadObject } from "./storage";
 
@@ -559,6 +560,98 @@ api.delete("/admin/bots/:id", requireAuth, requireRealAdmin, async (req, res) =>
   const ok = await bots.remove((req.params.id ?? ""));
   if (!ok) {
     res.status(404).json({ error: "Bot not found" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+/* ------------------------------------------------------------------ */
+/* Admin — bot teams (LLM designs a team, mirrored as a channel)        */
+/* ------------------------------------------------------------------ */
+
+const teamCreateSchema = z.object({
+  description: z.string().trim().min(1).max(2000),
+  orchardId: z.string().min(1),
+  count: z.number().int().min(1).max(12).optional(),
+  model: z.string().optional(),
+  groupName: z.string().trim().max(60).optional(),
+});
+
+/** Every bot team (admin view). */
+api.get("/admin/bot-teams", requireAuth, requireRealAdmin, async (_req, res) => {
+  res.json({ teams: await botGroups.all() });
+});
+
+/**
+ * Design a team of bots from a description, create them under a group, and mirror
+ * the group as a channel in the workspace (with the bots + the admin as members).
+ */
+api.post("/admin/bot-teams", requireAuth, requireRealAdmin, async (req, res) => {
+  const parsed = teamCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "A description and workspace are required." });
+    return;
+  }
+  const { description, orchardId, count, model, groupName } = parsed.data;
+  const orchard = await orchards.byId(orchardId);
+  if (!orchard) {
+    res.status(404).json({ error: "That workspace doesn't exist." });
+    return;
+  }
+  const chosenModel = model && isKnownModelId(model) ? model : DEFAULT_MODEL_ID;
+
+  // 1. Design the team.
+  let spec;
+  try {
+    spec = await generateBotTeam({ description, count, groupName });
+  } catch (err) {
+    console.error("[bot-teams] generation failed:", err);
+    res.status(502).json({ error: "The team generator is unavailable right now. Try again." });
+    return;
+  }
+  if (!spec.bots.length) {
+    res.status(502).json({ error: "The generator produced no bots — try a clearer description." });
+    return;
+  }
+
+  // 2. Group, 3. bots (in the group), 4. channel with the bots + admin as members.
+  const name = (groupName?.trim() || spec.groupName || "Team").slice(0, 60);
+  const group = await botGroups.create({ name, description, orchardId });
+  const createdBots = [];
+  for (const b of spec.bots) {
+    createdBots.push(
+      await bots.create({
+        displayName: b.displayName,
+        orchardId,
+        model: chosenModel,
+        systemPrompt: b.systemPrompt,
+        botGroupId: group.id,
+      }),
+    );
+  }
+  const adminId = (req as AuthedRequest).scope.realUserId;
+  const channel = await channels.create({
+    orchardId,
+    kind: "channel",
+    name,
+    createdBy: adminId,
+    isPrivate: false,
+    memberIds: [adminId, ...createdBots.map((b) => b.id)],
+  });
+  await botGroups.setChannel(group.id, channel.id);
+
+  // 5. Surface the new bots + channel to the workspace live.
+  for (const bot of createdBots) await broadcastUserUpdate(bot);
+  broadcastChannelCreated(channel);
+
+  res.json({ team: await botGroups.byId(group.id) });
+});
+
+/** Delete a team: its bots, the group, and its channel. */
+api.delete("/admin/bot-teams/:id", requireAuth, requireRealAdmin, async (req, res) => {
+  const removed = await botGroups.remove((req.params.id ?? ""));
+  if (!removed) {
+    res.status(404).json({ error: "Team not found" });
     return;
   }
   res.json({ ok: true });

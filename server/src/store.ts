@@ -7,6 +7,7 @@ import type {
   AdminConversation,
   AdminUser,
   AgentToolCall,
+  BotTeam,
   Bootstrap,
   Channel,
   ChannelKind,
@@ -591,6 +592,7 @@ export const bots = {
     orchardId: ID;
     model: string;
     systemPrompt: string;
+    botGroupId?: ID | null;
   }): Promise<User> => {
     const oidcSub = `bot:${nanoid(12)}`; // never collides with numeric OIDC subs
     const displayName = input.displayName.trim() || "Bot";
@@ -605,6 +607,7 @@ export const bots = {
         hue: hashHue(oidcSub),
         botModel: input.model,
         botSystemPrompt: input.systemPrompt,
+        ...(input.botGroupId ? { botGroupId: input.botGroupId } : {}),
       },
     });
     await orchards.ensureMembership(input.orchardId, row.id);
@@ -686,6 +689,92 @@ export const bots = {
     await prisma.message.deleteMany({ where: { authorId: id } });
     await prisma.user.delete({ where: { id } });
     return true;
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* Bot groups (teams) — a named set of bots, mirrored as a channel      */
+/* ------------------------------------------------------------------ */
+
+interface BotTeamRow {
+  id: string;
+  name: string;
+  description: string | null;
+  channelId: string | null;
+  createdAt: Date;
+  orchard: DbOrchard;
+  bots: DbUser[];
+}
+
+function mapBotTeam(row: BotTeamRow): BotTeam {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    orchard: { id: row.orchard.id, code: row.orchard.code, name: row.orchard.name },
+    channelId: row.channelId,
+    bots: row.bots.map(mapUser),
+    createdAt: row.createdAt.getTime(),
+  };
+}
+
+export const botGroups = {
+  create: async (input: {
+    name: string;
+    description?: string | null;
+    orchardId: ID;
+  }): Promise<{ id: ID }> => {
+    const row = await prisma.botGroup.create({
+      data: {
+        id: nanoid(10),
+        name: input.name.trim() || "Team",
+        description: input.description?.trim() || null,
+        orchardId: input.orchardId,
+      },
+    });
+    return { id: row.id };
+  },
+
+  setChannel: async (id: ID, channelId: ID): Promise<void> => {
+    await prisma.botGroup.update({ where: { id }, data: { channelId } });
+  },
+
+  /** Every bot team (admin view), newest first. */
+  all: async (): Promise<BotTeam[]> => {
+    const rows = await prisma.botGroup.findMany({
+      include: { orchard: true, bots: true },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows.map(mapBotTeam);
+  },
+
+  byId: async (id: ID): Promise<BotTeam | null> => {
+    const row = await prisma.botGroup.findUnique({
+      where: { id },
+      include: { orchard: true, bots: true },
+    });
+    return row ? mapBotTeam(row) : null;
+  },
+
+  /**
+   * Delete a team: its bots (and their messages), the group, and its channel.
+   * Returns what was removed so the caller can broadcast the removals.
+   */
+  remove: async (
+    id: ID,
+  ): Promise<{ channelId: string | null; botIds: ID[]; orchardId: ID } | null> => {
+    const row = await prisma.botGroup.findUnique({ where: { id }, include: { bots: true } });
+    if (!row) return null;
+    const botIds = row.bots.map((b) => b.id);
+    if (botIds.length) {
+      await prisma.message.deleteMany({ where: { authorId: { in: botIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: botIds } } });
+    }
+    if (row.channelId) {
+      await prisma.channel.deleteMany({ where: { id: row.channelId } });
+    }
+    await prisma.botGroup.delete({ where: { id } });
+    return { channelId: row.channelId, botIds, orchardId: row.orchardId };
   },
 };
 

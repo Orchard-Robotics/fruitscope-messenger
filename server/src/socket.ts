@@ -3,6 +3,7 @@ import type { Server, Socket } from "socket.io";
 import { z } from "zod";
 
 import type {
+  Channel,
   ClientToServerEvents,
   ID,
   ServerToClientEvents,
@@ -192,6 +193,17 @@ export async function broadcastUserUpdate(user: User): Promise<void> {
   for (const orchard of await orchards.forUser(user.id)) {
     ioRef.to(orchRoom(orchard.id)).emit("user:upserted", user);
   }
+}
+
+/**
+ * Announce a newly created public channel to its workspace: join everyone's
+ * sockets to the room (so live messages flow) and emit channel:created. Safe to
+ * call from HTTP routes (e.g. bot-team creation).
+ */
+export function broadcastChannelCreated(channel: Channel): void {
+  if (!ioRef) return;
+  void ioRef.in(orchRoom(channel.orchardId)).socketsJoin(chanRoom(channel.id));
+  ioRef.to(orchRoom(channel.orchardId)).emit("channel:created", channel);
 }
 
 /** After a user re-authenticates, finish any Canary reply that stalled on an

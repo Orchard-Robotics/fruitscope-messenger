@@ -1,19 +1,21 @@
-import { Bot, Building2, MessagesSquare, Terminal, Users, X } from "lucide-react";
+import { Bot, Building2, MessagesSquare, Terminal, Users, Users2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/cn";
 import { AgentApiSection } from "./AgentApiSection";
 import { BotsSection } from "./BotsSection";
+import { BotTeamsSection } from "./BotTeamsSection";
 import { ConversationsSection } from "./ConversationsSection";
 import { MembersSection } from "./MembersSection";
 import { WorkspacesSection } from "./WorkspacesSection";
 
-type Section = "members" | "bots" | "workspaces" | "conversations" | "agents";
+type Section = "members" | "bots" | "teams" | "workspaces" | "conversations" | "agents";
 
 const NAV: ReadonlyArray<readonly [Section, typeof Users, string]> = [
   ["members", Users, "Members"],
   ["bots", Bot, "Bots"],
+  ["teams", Users2, "Bot teams"],
   ["workspaces", Building2, "Workspaces"],
   ["conversations", MessagesSquare, "Conversations"],
   ["agents", Terminal, "Agent API"],
@@ -71,6 +73,7 @@ export function AdminConsole({ open, onClose }: { open: boolean; onClose: () => 
         <div className="flex min-h-0 flex-1 flex-col">
           {section === "members" && <MembersSection />}
           {section === "bots" && <BotsSection />}
+          {section === "teams" && <BotTeamsSection />}
           {section === "workspaces" && <WorkspacesSection />}
           {section === "conversations" && <ConversationsSection />}
           {section === "agents" && <AgentApiSection />}

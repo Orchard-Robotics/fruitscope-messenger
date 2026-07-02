@@ -109,6 +109,18 @@ export interface AgentToolCall {
   output?: unknown;
 }
 
+/** A named team of bots in a workspace, mirrored as a channel (admin feature). */
+export interface BotTeam {
+  id: ID;
+  name: string;
+  description: string | null;
+  orchard: { id: ID; code: string; name: string };
+  /** The channel this team is replicated into, if it still exists. */
+  channelId: ID | null;
+  bots: User[];
+  createdAt: Timestamp;
+}
+
 /**
  * Everything the client needs to render one orchard's workspace on connect.
  * Messages are intentionally NOT included — they are loaded lazily per channel

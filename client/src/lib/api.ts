@@ -2,6 +2,7 @@ import type {
   AdminBot,
   AdminConversation,
   AdminUser,
+  BotTeam,
   Bootstrap,
   Channel,
   Message,
@@ -165,6 +166,26 @@ export const rest = {
   /** Permanently delete a bot and its messages. */
   deleteBot: (id: string) =>
     request<{ ok: true }>(`/admin/bots/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  /* ---- admin: LLM-generated bot teams ---- */
+  /** Every bot team (group + its bots + channel). */
+  adminBotTeams: async (): Promise<BotTeam[]> =>
+    (await request<{ teams: BotTeam[] }>("/admin/bot-teams")).teams,
+  /** Generate a team: LLM designs the bots, creates them, groups them, spins up a channel. */
+  createBotTeam: async (input: {
+    description: string;
+    orchardId: string;
+    count?: number;
+    model?: string;
+    groupName?: string;
+  }): Promise<BotTeam> =>
+    (await request<{ team: BotTeam }>("/admin/bot-teams", {
+      method: "POST",
+      body: JSON.stringify(input),
+    })).team,
+  /** Delete a team (its bots, the group, and its channel). */
+  deleteBotTeam: (id: string) =>
+    request<{ ok: true }>(`/admin/bot-teams/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   /* ---- CanaryCode: interactive read-only SQL (staff only) ---- */
   /** Run a read-only SQL query against the shared FruitScope DB; returns rows or an error. */

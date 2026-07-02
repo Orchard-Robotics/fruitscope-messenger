@@ -22,9 +22,27 @@ model Orchard {
   name      String
   createdAt DateTime @default(now())
 
-  members  OrchardMembership[]
-  channels Channel[]
-  sessions Session[]
+  members   OrchardMembership[]
+  channels  Channel[]
+  sessions  Session[]
+  botGroups BotGroup[]
+}
+
+// A named team of bots in a workspace, mirrored as a channel. Created manually or
+// by the LLM team generator (admin only).
+model BotGroup {
+  id          String   @id
+  name        String
+  description String?
+  orchardId   String
+  // The channel this group is replicated into (plain ref; lifecycle handled in code).
+  channelId   String?
+  createdAt   DateTime @default(now())
+
+  orchard Orchard @relation(fields: [orchardId], references: [id], onDelete: Cascade)
+  bots    User[]  @relation("BotGroupBots")
+
+  @@index([orchardId])
 }
 
 model OrchardMembership {
@@ -61,6 +79,8 @@ model User {
   // @mentions in its workspace (and to every message in a 1:1 DM with it).
   botModel        String?
   botSystemPrompt String?
+  // Bot group (team) this bot belongs to, if any. Set for bots created via a team.
+  botGroupId      String?
   // The FruitScope OIDC `session_jwt` claim: a short-lived (24h) bearer token
   // that lets the messenger act as this user against the FruitScope API (Canary).
   // Presented to api.fruitscope.com as the `auth_jwt` cookie. Re-minted on every
@@ -90,6 +110,7 @@ model User {
   createdChannels Channel[]           @relation("ChannelCreator")
   mentions        Mention[]
   pushSubs        PushSubscription[]
+  botGroup        BotGroup?           @relation("BotGroupBots", fields: [botGroupId], references: [id], onDelete: SetNull)
 }
 
 model Channel {
