@@ -21,8 +21,12 @@ COPY server ./server
 COPY shared ./shared
 COPY tsconfig.base.json ./
 RUN npm --workspace server run generate
+# Precompile the server to a single JS bundle (deps stay external). Running the
+# bundle with `node` avoids tsx transpiling the whole app on every cold start —
+# cutting startup from ~13s to ~3-4s.
+RUN npm --workspace server run build
 
-# ---- runtime: ship source + node_modules, run via tsx ----
+# ---- runtime: ship compiled bundle + node_modules, run via node ----
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
@@ -30,13 +34,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# node_modules (incl. tsx + prisma CLI), server/shared source, Prisma schema +
-# migrations + generated client all come from the build stage.
+# node_modules (incl. prisma CLI), the compiled server bundle (dist/), Prisma
+# schema + migrations + generated client all come from the build stage.
 COPY --from=build /app ./
 
 EXPOSE 8080
 
-# Run from server/ so tsx resolves the @shared/* tsconfig paths (as in dev).
-# Apply migrations, then start. `exec` so the server is PID 1 and receives SIGTERM.
+# Apply migrations, then run the precompiled bundle with node (fast cold start —
+# no on-boot TypeScript transpilation). `exec` so node is PID 1 and gets SIGTERM.
 WORKDIR /app/server
-CMD ["sh", "-c", "../node_modules/.bin/prisma migrate deploy && exec ../node_modules/.bin/tsx src/index.ts"]
+CMD ["sh", "-c", "../node_modules/.bin/prisma migrate deploy && exec node dist/index.js"]
