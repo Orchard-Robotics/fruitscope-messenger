@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import type { ID } from "@shared/index";
 import { cn } from "@/lib/cn";
 import { useChatStore } from "@/store/store";
+import { markdownComponents } from "./code/MarkdownCode";
 
 const MENTION_RE = /<@([A-Za-z0-9_-]+)>/g;
 
@@ -46,6 +47,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
         // sanitize everything else (e.g. javascript:).
         urlTransform={(url) => (url.startsWith("mention:") ? url : defaultUrlTransform(url))}
         components={{
+          ...markdownComponents,
           a({ href, children }) {
             if (href?.startsWith("mention:")) {
               return <Mention userId={href.slice("mention:".length)} isMe={href.slice("mention:".length) === meId} />;

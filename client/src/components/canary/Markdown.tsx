@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "@/lib/cn";
+import { markdownComponents } from "../code/MarkdownCode";
 
 /**
  * Markdown for Canary's answers — GitHub-flavoured (tables, lists, code), styled
@@ -32,7 +33,9 @@ export const Markdown = memo(function Markdown({ children }: { children: string 
         "[&_hr]:my-3 [&_hr]:border-line",
       )}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {children}
+      </ReactMarkdown>
     </div>
   );
 });
