@@ -160,6 +160,9 @@ export function MessageList({ channelId }: { channelId: ID }) {
         const grouped =
           prev !== undefined &&
           prev.authorId === message.authorId &&
+          // Don't group across an identity change (human vs. agent, or two
+          // different agents from the same owner) — each needs its own header.
+          (prev.agentName ?? null) === (message.agentName ?? null) &&
           message.createdAt - prev.createdAt < GROUP_GAP_MS &&
           !showDivider;
         return (

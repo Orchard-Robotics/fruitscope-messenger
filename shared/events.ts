@@ -34,7 +34,10 @@ export interface ServerToClientEvents {
 
 export interface ClientToServerEvents {
   "message:send": (
-    payload: { channelId: ID; content: string },
+    // `agent` (admins only): flag the send as coming from an AI agent you own.
+    // `name` sets the agent's display name; omit it for a default derived from
+    // your name. Ignored (posts as a normal message) for non-admins.
+    payload: { channelId: ID; content: string; agent?: { name?: string } },
     ack: (res: Result<Message>) => void,
   ) => void;
   "message:react": (

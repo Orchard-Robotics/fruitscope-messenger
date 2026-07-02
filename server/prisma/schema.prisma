@@ -133,6 +133,9 @@ model Message {
   // rendered as a collapsible box gated by the admin debug toggle. Null for every
   // normal message and for Canary DMs (which stream their own reasoning parts).
   canaryReasoning String?
+  // When set, this message was sent by an AI agent owned by `author` (an admin).
+  // The client shows this name and marks the message as an agent (not the human).
+  agentName String?
   createdAt DateTime  @default(now())
   editedAt  DateTime?
 

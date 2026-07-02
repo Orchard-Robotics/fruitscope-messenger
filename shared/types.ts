@@ -87,6 +87,13 @@ export interface Message {
    * debug toggle. Null/absent for every normal message.
    */
   canaryReasoning?: string | null;
+  /**
+   * When set, this message was sent by an AI agent owned by `authorId` (an admin
+   * who flagged the send as an agent). The client shows this name and marks the
+   * message as an agent — distinct from the human — rather than the author's name.
+   * Null/absent for normal human messages.
+   */
+  agentName?: string | null;
 }
 
 /**

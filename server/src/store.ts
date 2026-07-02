@@ -112,6 +112,7 @@ function mapMessage(row: DbMessage): Message {
     // Admin-only Canary thinking. The socket layer strips this before it reaches
     // non-admin recipients (see redactMessage), so non-admins never receive it.
     canaryReasoning: row.canaryReasoning,
+    agentName: row.agentName,
   };
 }
 
@@ -875,6 +876,7 @@ export const messages = {
     authorId: ID,
     content: string,
     canaryReasoning?: string | null,
+    agentName?: string | null,
   ): Promise<Message> => {
     const row = await prisma.message.create({
       data: {
@@ -883,6 +885,7 @@ export const messages = {
         authorId,
         content,
         ...(canaryReasoning ? { canaryReasoning } : {}),
+        ...(agentName ? { agentName } : {}),
       },
       include: messageInclude,
     });

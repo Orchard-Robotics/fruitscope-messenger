@@ -1,4 +1,4 @@
-import { Check, Copy, Link2, MoreHorizontal, Pencil, SmilePlus } from "lucide-react";
+import { Bot, Check, Copy, Link2, MoreHorizontal, Pencil, SmilePlus } from "lucide-react";
 import { useState } from "react";
 
 import type { ID, Message, User } from "@shared/index";
@@ -32,6 +32,7 @@ export function MessageItem({ message, author, showHeader, meId, highlighted }: 
   const [copied, setCopied] = useState<"link" | "text" | null>(null);
 
   const isOwn = message.authorId === meId;
+  const isAgent = !!message.agentName;
 
   const react = (emoji: string) => {
     setPicking(false);
@@ -58,6 +59,9 @@ export function MessageItem({ message, author, showHeader, meId, highlighted }: 
       className={cn(
         "group relative flex gap-3 px-4 transition-colors duration-1000",
         showHeader ? "mt-3 pt-1" : "py-0.5",
+        // Subtle, distinct accent so an owned AI agent's messages read as "not the
+        // human" without shouting — a thin violet rail + faint tint.
+        isAgent && !highlighted && "border-l-2 border-violet-400/60 bg-violet-500/[0.035]",
         highlighted ? "bg-amber-100" : "anim-rise-in hover:bg-surface",
       )}
     >
@@ -78,7 +82,19 @@ export function MessageItem({ message, author, showHeader, meId, highlighted }: 
       <div className="min-w-0 flex-1">
         {showHeader && (
           <div className="flex items-baseline gap-2">
-            <span className="font-semibold text-ink">{author?.displayName ?? "Someone"}</span>
+            {isAgent ? (
+              <span className="flex items-center gap-1.5">
+                <span className="font-semibold text-ink">{message.agentName}</span>
+                <span className="inline-flex items-center gap-0.5 rounded bg-violet-500/15 px-1 py-px text-[10px] font-bold uppercase tracking-wide text-violet-600">
+                  <Bot className="size-3" /> Agent
+                </span>
+                <span className="text-xs font-normal text-ink-faint">
+                  via {author?.displayName ?? "someone"}
+                </span>
+              </span>
+            ) : (
+              <span className="font-semibold text-ink">{author?.displayName ?? "Someone"}</span>
+            )}
             <span className="text-xs text-ink-faint">{timeOfDay(message.createdAt)}</span>
           </div>
         )}

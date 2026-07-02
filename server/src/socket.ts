@@ -57,6 +57,8 @@ const typingByChannel = new Map<ID, Map<ID, ReturnType<typeof setTimeout>>>();
 const sendSchema = z.object({
   channelId: z.string().min(1),
   content: z.string().trim().min(1).max(4000),
+  // Admins only: flag this as a message from an AI agent you own (optional name).
+  agent: z.object({ name: z.string().trim().max(60).optional() }).optional(),
 });
 const reactSchema = z.object({ messageId: z.string().min(1), emoji: z.enum(REACTION_EMOJI) });
 const editSchema = z.object({
@@ -258,7 +260,17 @@ async function registerSocket(io: IOServer, socket: IOSocket): Promise<void> {
     const content = hasRawMention
       ? encodeMentions(raw, await orchards.members(orchardId))
       : raw;
-    const message = await messages.create(channel.id, userId, content);
+
+    // Agent flag (admins only): stamp the message as an AI agent owned by this
+    // user. Non-admins can't spoof an agent — the flag is ignored for them.
+    let agentName: string | null = null;
+    if (parsed.data.agent && (await users.isSuperAdmin(userId))) {
+      const name = parsed.data.agent.name?.trim();
+      const owner = (await users.byId(userId))?.displayName ?? "someone";
+      agentName = name && name.length > 0 ? name : `${owner}'s agent`;
+    }
+
+    const message = await messages.create(channel.id, userId, content, null, agentName);
     io.to(chanRoom(channel.id)).emit("message:new", message);
     stopTyping(io, channel.id, userId);
     ack({ ok: true, data: message });
