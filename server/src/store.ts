@@ -6,6 +6,7 @@ import type {
   AdminBot,
   AdminConversation,
   AdminUser,
+  AgentToolCall,
   Bootstrap,
   Channel,
   ChannelKind,
@@ -113,7 +114,19 @@ function mapMessage(row: DbMessage): Message {
     // non-admin recipients (see redactMessage), so non-admins never receive it.
     canaryReasoning: row.canaryReasoning,
     agentName: row.agentName,
+    agentToolCalls: parseToolCalls(row.agentToolCalls),
   };
+}
+
+/** Parse the stored JSON tool-call array (best-effort; null on absent/garbage). */
+function parseToolCalls(raw: string | null): AgentToolCall[] | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? (v as AgentToolCall[]) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Map a seed (username / OIDC sub) to a stable avatar hue (0–360). */
@@ -877,6 +890,7 @@ export const messages = {
     content: string,
     canaryReasoning?: string | null,
     agentName?: string | null,
+    agentToolCalls?: string | null,
   ): Promise<Message> => {
     const row = await prisma.message.create({
       data: {
@@ -886,6 +900,7 @@ export const messages = {
         content,
         ...(canaryReasoning ? { canaryReasoning } : {}),
         ...(agentName ? { agentName } : {}),
+        ...(agentToolCalls ? { agentToolCalls } : {}),
       },
       include: messageInclude,
     });

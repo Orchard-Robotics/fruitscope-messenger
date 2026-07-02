@@ -136,6 +136,10 @@ model Message {
   // When set, this message was sent by an AI agent owned by `author` (an admin).
   // The client shows this name and marks the message as an agent (not the human).
   agentName String?
+  // CanaryCode's tool calls for an in-channel reply — a JSON array of
+  // {name,input,output} — so channels render the same rich tool cards (SQL
+  // editor, log viewer, …) as its DM. Null for everything else.
+  agentToolCalls String?
   createdAt DateTime  @default(now())
   editedAt  DateTime?
 

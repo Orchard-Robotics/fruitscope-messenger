@@ -10,6 +10,7 @@ import { decodeMentionsToInput, encodeMentions } from "@/lib/mentions";
 import { chat } from "@/lib/socket";
 import { useChatStore } from "@/store/store";
 import { Avatar } from "./Avatar";
+import { AgentToolCards } from "./canary/AgentToolCards";
 import { CanaryAvatar } from "./canary/CanaryAvatar";
 import { CanaryReasoning } from "./canary/CanaryReasoning";
 import { MessageContent } from "./MessageContent";
@@ -108,6 +109,12 @@ export function MessageItem({ message, author, showHeader, meId, highlighted }: 
               <span className="ml-1 align-baseline text-[10px] text-ink-faint">(edited)</span>
             )}
           </div>
+        )}
+
+        {/* CanaryCode's rich tool cards (SQL editor, log viewer, …) — the same
+            ones from its DM, rendered wherever it posts. Only CanaryCode sets these. */}
+        {message.agentToolCalls && message.agentToolCalls.length > 0 && (
+          <AgentToolCards calls={message.agentToolCalls} />
         )}
 
         {/* Canary's admin-only thinking (collapsible). Present only for admins —

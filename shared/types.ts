@@ -94,6 +94,19 @@ export interface Message {
    * Null/absent for normal human messages.
    */
   agentName?: string | null;
+  /**
+   * CanaryCode's tool calls for an in-channel reply, so the channel renders the
+   * same rich tool cards (SQL editor, log viewer, …) as its DM. Only set on
+   * CanaryCode-authored messages that used tools; null/absent otherwise.
+   */
+  agentToolCalls?: AgentToolCall[] | null;
+}
+
+/** One tool call CanaryCode made while answering — rendered as a rich card. */
+export interface AgentToolCall {
+  name: string;
+  input?: unknown;
+  output?: unknown;
 }
 
 /**

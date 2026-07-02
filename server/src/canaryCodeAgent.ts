@@ -49,6 +49,38 @@ export const CANARYCODE_SYSTEM = [
   "configured, tell the user the integration needs a token and answer from what you know.",
 ].join("\n");
 
+interface RawToolCall {
+  toolName?: string;
+  toolCallId?: string;
+  input?: unknown;
+  args?: unknown;
+}
+interface RawToolResult {
+  toolCallId?: string;
+  output?: unknown;
+  result?: unknown;
+}
+
+/** Flatten a generateText result's steps into {name,input,output} tool calls. */
+function collectToolCalls(result: {
+  steps?: ReadonlyArray<{ toolCalls?: unknown; toolResults?: unknown }>;
+}): Array<{ name: string; input?: unknown; output?: unknown }> {
+  const out: Array<{ name: string; input?: unknown; output?: unknown }> = [];
+  for (const step of result.steps ?? []) {
+    const calls = (step.toolCalls ?? []) as RawToolCall[];
+    const results = (step.toolResults ?? []) as RawToolResult[];
+    for (const c of calls) {
+      const r = results.find((x) => x.toolCallId === c.toolCallId);
+      out.push({
+        name: c.toolName ?? "tool",
+        input: c.input ?? c.args,
+        output: r?.output ?? r?.result,
+      });
+    }
+  }
+  return out;
+}
+
 /** Replace `<@id>` mention tokens with readable `@Name` for the transcript. */
 async function withNames(content: string, name: (id: ID) => Promise<string>): Promise<string> {
   let out = content;
@@ -123,11 +155,16 @@ export async function respondAsCanaryCode(io: IO, channelId: ID, senderId: ID): 
     typing(false);
     if (botsPaused(channelId)) return;
 
+    // Capture the tool calls (input + output) so the channel renders the same
+    // rich tool cards (SQL editor, log viewer, …) CanaryCode shows in its DM.
+    const toolCalls = collectToolCalls(result);
+    const toolCallsJson = toolCalls.length ? JSON.stringify(toolCalls) : null;
+
     const text = encodeMentions(
       result.text.trim() || "I’m not sure how to help with that one — could you give me more detail?",
       roster.members,
     );
-    const msg = await messages.create(channelId, CANARYCODE.id, text, null);
+    const msg = await messages.create(channelId, CANARYCODE.id, text, null, null, toolCallsJson);
     await emitMessage(io, channelId, "message:new", msg);
     await afterBotPost(io, channel, msg);
   } catch (err) {
